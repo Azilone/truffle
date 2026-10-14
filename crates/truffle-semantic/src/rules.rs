@@ -311,7 +311,7 @@ pub const SKIPPED_FOLDER_NAMES: &[&str] = &[
 
 /// Any of these in a folder makes it a code project, where only screenshots are indexed (assets, fixtures and
 /// datasets aren't what people look for).
-pub const PROJECT_MARKERS: &[&str] = &[
+const PROJECT_MARKERS: &[&str] = &[
     ".git",
     "package.json",
     "package.swift",
@@ -425,7 +425,13 @@ pub fn change_matters(dir: &Path, root: &Path) -> bool {
     // A project marker in the folder or any folder above it, up to the root.
     let mut here = Some(dir);
     while let Some(folder) = here.filter(|f| f.starts_with(root)) {
-        if folder != root && PROJECT_MARKERS.iter().any(|m| folder.join(m).exists()) {
+        // The markers are compared case-insensitively (Cargo.toml, cargo.toml): Linux disks keep case.
+        if folder != root
+            && std::fs::read_dir(folder).is_ok_and(|entries| {
+                let names: Vec<String> = entries.flatten().map(|e| e.file_name().to_string_lossy().into_owned()).collect();
+                is_project_root(names.iter().map(String::as_str))
+            })
+        {
             return false;
         }
         here = folder.parent();
