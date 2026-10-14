@@ -3,6 +3,7 @@
 
 pub mod docs;
 pub mod exif;
+pub mod media;
 pub mod pdf;
 pub mod svg;
 pub mod text;

@@ -15,3 +15,18 @@ encoding_rs = "0.8"
 resvg = "0.48"
 pdf_oxide = { version = "0.3.78", features = ["rendering"] }
 
+image = { version = "0.25", default-features = false, features = ["jpeg", "png", "gif", "bmp", "tiff", "webp", "ico"] }
+fast_image_resize = "6"
+symphonia = { version = "0.6", features = ["all"] }
+serde_json = "1"
+
+[target.'cfg(target_os = "macos")'.dependencies]
+objc2 = "0.6"
+objc2-foundation = { version = "0.3", features = ["NSValue", "NSDictionary", "NSString", "NSURL", "NSArray", "NSError"] }
+objc2-core-foundation = "0.3"
+objc2-core-graphics = "0.3"
+objc2-image-io = "0.3"
+objc2-vision = "0.3"
+objc2-av-foundation = { version = "0.3", features = ["objc2-core-media", "objc2-core-graphics", "objc2-core-foundation"] }
+objc2-core-media = { version = "0.3", features = ["CMTime"] }
+objc2-core-video = "0.3"
