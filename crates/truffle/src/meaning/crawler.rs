@@ -432,20 +432,20 @@ mod tests {
             std::fs::create_dir_all(path.parent().unwrap()).unwrap();
             std::fs::write(&path, text).unwrap();
         };
-        write(r"app\main.py", "print(1)\n");
-        write(r"app\README.md", "# App\n");
-        write(r"app\.gitignore", "build/\n*.log\nscratch.py\n");
-        write(r"app\scratch.py", "x = 1\n"); // ignored by git
-        write(r"app\notes\todo.md", "- ship\n"); // new, not ignored: kept
-        write(r"app\build\out.py", "x = 2\n"); // ignored (and a built folder)
-        write(r"app\vendor\lib\core.py", "x = 3\n"); // vendored: left out
-        write(r"app\node_modules\pad\index.js", "x\n"); // a dependency
-        write(r"app\data.json", "{}\n"); // data
-        write(r"app\big.py", &"x = 1\n".repeat(200_000)); // 1.2 MB: made by a program
-        write(r"app\sub\.git", "gitdir: ../.git/modules/sub\n"); // a submodule
-        write(r"app\sub\lib.py", "x = 4\n");
-        write(r"loose\backup.sh", "rsync\n"); // not in a repo: everything code counts
-        std::fs::create_dir_all(root.join(r"app\.git")).unwrap(); // a repo (the ignore crate needs only its folder)
+        write("app/main.py", "print(1)\n");
+        write("app/README.md", "# App\n");
+        write("app/.gitignore", "build/\n*.log\nscratch.py\n");
+        write("app/scratch.py", "x = 1\n"); // ignored by git
+        write("app/notes/todo.md", "- ship\n"); // new, not ignored: kept
+        write("app/build/out.py", "x = 2\n"); // ignored (and a built folder)
+        write("app/vendor/lib/core.py", "x = 3\n"); // vendored: left out
+        write("app/node_modules/pad/index.js", "x\n"); // a dependency
+        write("app/data.json", "{}\n"); // data
+        write("app/big.py", &"x = 1\n".repeat(200_000)); // 1.2 MB: made by a program
+        write("app/sub/.git", "gitdir: ../.git/modules/sub\n"); // a submodule
+        write("app/sub/lib.py", "x = 4\n");
+        write("loose/backup.sh", "rsync\n"); // not in a repo: everything code counts
+        std::fs::create_dir_all(root.join("app/.git")).unwrap(); // a repo (the ignore crate needs only its folder)
         let options = IndexOptions { code: true, ..IndexOptions::default() };
         let report = crawl(&[root.to_string_lossy().into_owned()], &options);
         let mut names: Vec<String> = report
@@ -454,7 +454,7 @@ mod tests {
             .map(|c| c.path[root.to_string_lossy().len() + 1..].to_string())
             .collect();
         names.sort();
-        assert_eq!(names, [r"app\README.md", r"app\main.py", r"app\notes\todo.md", r"loose\backup.sh"]);
+        assert_eq!(names, ["app/README.md", "app/main.py", "app/notes/todo.md", "loose/backup.sh"]);
         assert_eq!(report.skipped_folders["vendored or built code"], 1); // vendor (build is git-ignored first)
         assert_eq!(report.skipped_folders["submodule or worktree"], 1);
         assert_eq!(report.skipped["data file"], 1);
@@ -477,17 +477,17 @@ mod tests {
             std::fs::create_dir_all(path.parent().unwrap()).unwrap();
             std::fs::write(&path, b"x").unwrap();
         };
-        make(r"Photos\beach.jpg");
-        make(r"Photos\notes.txt");
-        make(r"Photos\Old\skipme.jpg");
-        make(r"code\app\Cargo.toml");
-        make(r"code\app\assets\logo.png");
-        make(r"code\app\Screenshot 2026-01-01.png");
-        make(r"code\app\node_modules\x\readme.md");
-        make(r"keys\server.pem");
-        make(r"music\song.mp3");
+        make("Photos/beach.jpg");
+        make("Photos/notes.txt");
+        make("Photos/Old/skipme.jpg");
+        make("code/app/Cargo.toml");
+        make("code/app/assets/logo.png");
+        make("code/app/Screenshot 2026-01-01.png");
+        make("code/app/node_modules/x/readme.md");
+        make("keys/server.pem");
+        make("music/song.mp3");
         let options = IndexOptions {
-            excluded_folders: vec![root.join(r"Photos\Old").to_string_lossy().into_owned()],
+            excluded_folders: vec![root.join("Photos/Old").to_string_lossy().into_owned()],
             ..IndexOptions::default()
         };
         let report = crawl(&[root.to_string_lossy().into_owned()], &options);

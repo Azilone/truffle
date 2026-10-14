@@ -6,6 +6,7 @@
 //! The folders to search are in `<data>/meaning-folders`, one per line (`truffle meaning folders add <dir>`).
 
 use std::io::{BufRead, BufReader, Write};
+use std::os::unix::ffi::OsStrExt;
 use std::path::{Path, PathBuf};
 use std::process::{Child, ChildStdin, Command, Stdio};
 use std::sync::{Arc, Mutex, OnceLock};
@@ -124,8 +125,8 @@ impl Meaning {
             return;
         }
         let hit = dirs.iter().any(|(d, _)| {
-            let d = String::from_utf8_lossy(d);
-            self.roots.iter().any(|r| d == r.as_str() || d.starts_with(&format!("{}/", r.trim_end_matches('/'))))
+            let d = Path::new(std::ffi::OsStr::from_bytes(d));
+            self.roots.iter().any(|r| truffle_semantic::rules::change_matters(d, Path::new(r)))
         });
         if hit {
             self.indexer.lock().unwrap().pending = true;
@@ -194,7 +195,13 @@ impl Meaning {
     fn follow(&self, out: BufReader<std::process::ChildStdout>) {
         let mut last_reload = Instant::now();
         let mut unseen = false;
+        // Every event, for `truffle meaning log` and for whoever wonders what the indexer is doing.
+        let _ = std::fs::create_dir_all(paths::logs());
+        let mut log = std::fs::OpenOptions::new().create(true).append(true).open(paths::logs().join("indexer.log")).ok();
         for line in out.lines().map_while(Result::ok) {
+            if let Some(f) = &mut log {
+                let _ = writeln!(f, "{} {line}", truffle_index::query::now_secs());
+            }
             let Ok(event) = serde_json::from_str::<Value>(&line) else { continue };
             match event["event"].as_str() {
                 Some("file" | "rest") => unseen = true,
@@ -217,6 +224,3 @@ impl Meaning {
 pub fn index_dir() -> PathBuf {
     paths::index()
 }
-
-#[allow(dead_code)]
-fn _paths(_: &Path) {}

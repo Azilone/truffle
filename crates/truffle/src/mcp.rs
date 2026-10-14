@@ -22,7 +22,7 @@ const WAIT_INDEX: Duration = Duration::from_secs(30);
 /// unlucky query; a definition lookup takes five).
 const MAX_ASKS: usize = 16;
 
-const INSTRUCTIONS: &str = "truffle: indexed search over this project (or any folder, or the whole disk with path \"/\").
+const INSTRUCTIONS: &str = "truffle: indexed search over this project (find_by_meaning: files by what they show or say) (or any folder, or the whole disk with path \"/\").
 - grep: file contents; the default for any identifier or text. Definitions come first, with their first lines.
 - find_files: file names (fuzzy, typo-tolerant), to locate a file or see what exists.
 - multi_grep: several spellings at once (snake_case, CamelCase), OR'd.
@@ -138,6 +138,7 @@ impl Session {
                     "find_files" => self.find_files(args),
                     "grep" => self.grep(args, false),
                     "multi_grep" => self.grep(args, true),
+                    "find_by_meaning" => self.find_by_meaning(args),
                     other => return Some(error(id, -32602, &format!("unknown tool {other}"))),
                 };
                 let (text, is_error) = match r {
@@ -208,6 +209,42 @@ impl Session {
             Some(s) if !within(s, &self.root) => View { base: s.clone(), head: Some(format!("in {s}/:")) },
             _ => View { base: self.root.clone(), head: None },
         }
+    }
+
+    /// The meaning index: files by what they show or say, with the page, moment or line that matched.
+    fn find_by_meaning(&self, a: &Value) -> Result<String, String> {
+        let query = arg_str(a, &["query"]).unwrap_or_default();
+        if query.trim().is_empty() {
+            return Err("say what the file shows or says".into());
+        }
+        let limit = arg_num(a, "maxResults", 10);
+        let mut req = json!({"op": "meaning.search", "q": query, "limit": limit, "meaning": true});
+        if let Some(kinds) = a["kinds"].as_array() {
+            req["kinds"] = Value::Array(kinds.clone());
+        }
+        let r = self.ask(&req)?;
+        if r["ok"] == false {
+            return Err(r["error"].as_str().unwrap_or("meaning search failed").to_string());
+        }
+        let hits = r["hits"].as_array().cloned().unwrap_or_default();
+        if hits.is_empty() {
+            return Ok("Nothing matches. The meaning index covers the folders in `truffle meaning folders`.".into());
+        }
+        let mut out = String::new();
+        for h in &hits {
+            let kind = h["kind"].as_str().unwrap_or("");
+            let at = match (kind, h["loc"].as_f64()) {
+                ("pdf", Some(p)) => format!(" (page {p:.0})"),
+                ("audio" | "video", Some(t)) => format!(" (at {}:{:02})", t as u64 / 60, t as u64 % 60),
+                ("code", Some(l)) => format!(" (line {:.0})", h["focus"].as_f64().unwrap_or(l)),
+                _ => String::new(),
+            };
+            out.push_str(&format!("{} [{kind}]{at}\n", h["path"].as_str().unwrap_or("")));
+            if let Some(e) = h["excerpt"].as_str().filter(|e| !e.is_empty()) {
+                out.push_str(&format!("  {}\n", e.chars().take(200).collect::<String>().replace('\n', " ")));
+            }
+        }
+        Ok(out)
     }
 
     fn find_files(&self, a: &Value) -> Result<String, String> {
@@ -815,6 +852,16 @@ fn tools() -> Value {
                 g.as_object_mut().unwrap().extend(grep_extra.as_object().unwrap().clone());
                 g
             }), "required": ["query"]},
+            "annotations": ro,
+        },
+        {
+            "name": "find_by_meaning",
+            "description": "Find files by what they show or say, not their names or exact words: photos, screenshots, PDF pages, documents, audio and video moments, in the folders indexed by meaning. Describe it: 'invoice from the plumber', 'screenshot of the payment error', 'where they talk about pricing'. Returns paths with the page, moment or line that matched.",
+            "inputSchema": {"type": "object", "properties": {
+                "query": {"type": "string", "description": "What the file shows or says, in any language."},
+                "kinds": {"type": "array", "items": {"type": "string", "enum": ["image", "screenshot", "pdf", "doc", "audio", "video", "code"]}, "description": "Only these kinds."},
+                "maxResults": {"type": "number", "description": "Default 10."},
+            }, "required": ["query"]},
             "annotations": ro,
         },
         {

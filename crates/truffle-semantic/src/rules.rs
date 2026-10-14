@@ -311,7 +311,7 @@ pub const SKIPPED_FOLDER_NAMES: &[&str] = &[
 
 /// Any of these in a folder makes it a code project, where only screenshots are indexed (assets, fixtures and
 /// datasets aren't what people look for).
-const PROJECT_MARKERS: &[&str] = &[
+pub const PROJECT_MARKERS: &[&str] = &[
     ".git",
     "package.json",
     "package.swift",
@@ -395,6 +395,32 @@ pub fn system_folders() -> Vec<String> {
     }
     out.push(crate::paths::data_root().to_string_lossy().into_owned());
     out
+}
+
+/// Whether a change in `dir` (inside `root`) can matter to the meaning index: not in a hidden, cache, dependency or
+/// build folder, and not inside a code project (whose files only code search reads). Checked on every change the
+/// watcher reports, so a busy repo (a build writing `target/`) doesn't wake the indexer.
+pub fn change_matters(dir: &Path, root: &Path) -> bool {
+    let Ok(rest) = dir.strip_prefix(root) else { return false };
+    for part in rest.iter().filter_map(|p| p.to_str()) {
+        let lower = part.to_lowercase();
+        if part.starts_with('.')
+            || lower.ends_with(".noindex")
+            || SKIPPED_FOLDER_NAMES.contains(&lower.as_str())
+            || CODE_SKIPPED_FOLDER_NAMES.contains(&lower.as_str())
+        {
+            return false;
+        }
+    }
+    // A project marker in the folder or any folder above it, up to the root.
+    let mut here = Some(dir);
+    while let Some(folder) = here.filter(|f| f.starts_with(root)) {
+        if folder != root && PROJECT_MARKERS.iter().any(|m| folder.join(m).exists()) {
+            return false;
+        }
+        here = folder.parent();
+    }
+    true
 }
 
 /// Whether `entries` (a folder's file and folder names) make it a code project.
@@ -576,6 +602,23 @@ mod tests {
             classify(Path::new("a.heic"), &options),
             Classification::Skip("excluded type")
         );
+    }
+
+    #[test]
+    fn changes_that_matter() {
+        let root = std::env::temp_dir().join(format!("truffle-changes-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&root);
+        std::fs::create_dir_all(root.join("app/src")).unwrap();
+        std::fs::write(root.join("app/Cargo.toml"), "").unwrap();
+        std::fs::create_dir_all(root.join("Photos/2026")).unwrap();
+        assert!(change_matters(&root.join("Photos/2026"), &root));
+        assert!(change_matters(&root, &root));
+        assert!(!change_matters(&root.join("app/src"), &root));
+        assert!(!change_matters(&root.join("app/target/release"), &root));
+        assert!(!change_matters(&root.join("Photos/node_modules/x"), &root));
+        assert!(!change_matters(&root.join(".cache/x"), &root));
+        assert!(!change_matters(Path::new("/elsewhere"), &root));
+        let _ = std::fs::remove_dir_all(&root);
     }
 
     #[test]

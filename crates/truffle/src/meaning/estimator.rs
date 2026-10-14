@@ -425,7 +425,7 @@ mod tests {
     #[test]
     fn code_estimates_time_and_room() {
         let file = |name: &str, size: i64| Candidate {
-            path: format!(r"C:\x\{name}"),
+            path: format!("C:/x/{name}"),
             kind: FileKind::Code,
             size,
             mtime: 0.0,
