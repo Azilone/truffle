@@ -106,7 +106,8 @@ export type DigupStatus = { encoder: string; vectors: number; codeVectors: numbe
 export async function digupStatus(): Promise<DigupStatus> {
   if (!fs.existsSync(truffleBin)) return { encoder: "unavailable", vectors: 0, codeVectors: 0, folders: [], message: "truffle isn't installed" };
   const folders = await request({ op: "meaning.folders" });
-  const list = (folders.folders as string[] | undefined) ?? [];
+  // Folders held for want of Full Disk Access are still chosen (and what's indexed in them still found).
+  const list = [...((folders.folders as string[] | undefined) ?? []), ...((folders.held as string[] | undefined) ?? [])];
   if (list.length === 0) return { encoder: "stopped", vectors: 0, codeVectors: 0, folders: [] };
   const warm = await request({ op: "meaning.prewarm" }, 30_000);
   if (warm.ok === false) return { encoder: "unavailable", vectors: 0, codeVectors: 0, folders: list, message: String(warm.error ?? "") };

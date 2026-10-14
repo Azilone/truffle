@@ -70,6 +70,9 @@ pub fn folders_command(args: &[String]) -> Result<(), String> {
 /// The meaning side of the daemon.
 pub struct Meaning {
     roots: Vec<String>,
+    /// Chosen folders macOS guards (Desktop, Documents, Downloads…) while truffle lacks Full Disk Access: opening one
+    /// from a background process waits on a consent prompt nobody may see, so they're left alone until access is given.
+    held: Vec<String>,
     live: OnceLock<Result<Live, String>>,
     indexer: Mutex<Indexer>,
 }
@@ -87,7 +90,8 @@ const SETTLE: Duration = Duration::from_secs(2);
 
 impl Meaning {
     pub fn start() -> Arc<Meaning> {
-        let meaning = Arc::new(Meaning { roots: folders(), live: OnceLock::new(), indexer: Mutex::new(Indexer::default()) });
+        let (roots, held) = readable_roots(folders());
+        let meaning = Arc::new(Meaning { roots, held, live: OnceLock::new(), indexer: Mutex::new(Indexer::default()) });
         if !meaning.roots.is_empty() {
             // Catch up with what changed while the daemon was off.
             meaning.ask_sync();
@@ -99,7 +103,8 @@ impl Meaning {
 
     fn live(&self) -> Result<&Live, String> {
         self.live
-            .get_or_init(|| Live::open(&paths::index(), self.roots.clone(), Duration::from_secs(300)))
+            // What's indexed in a held folder stays searchable: only the indexer keeps out of it.
+            .get_or_init(|| Live::open(&paths::index(), [self.roots.clone(), self.held.clone()].concat(), Duration::from_secs(300)))
             .as_ref()
             .map_err(Clone::clone)
     }
@@ -107,7 +112,7 @@ impl Meaning {
     /// A request for the meaning index (`op` without its "meaning." prefix).
     pub fn handle(&self, op: &str, request: &Value) -> Value {
         if op == "folders" {
-            return json!({"ok": true, "folders": self.roots});
+            return json!({"ok": true, "folders": self.roots, "held": self.held, "full_disk_access": self.held.is_empty()});
         }
         if op == "index" {
             self.ask_sync();
@@ -173,8 +178,13 @@ impl Meaning {
 
     fn spawn(self: &Arc<Self>) -> Result<(Child, ChildStdin), String> {
         let exe = std::env::current_exe().map_err(|e| e.to_string())?;
-        let mut child = Command::new(exe)
-            .args(["meaning", "index-service", "--backfill", "--prune", "--linger", "60"])
+        let mut command = Command::new(exe);
+        command.args(["meaning", "index-service", "--backfill", "--linger", "60"]);
+        // Pruning drops files under none of the folders given: only when the indexer is given all of them.
+        if self.held.is_empty() {
+            command.arg("--prune");
+        }
+        let mut child = command
             .args(&self.roots)
             .stdin(Stdio::piped())
             .stdout(Stdio::piped())
@@ -218,6 +228,20 @@ impl Meaning {
             }
         }
     }
+}
+
+/// The chosen folders split into those the indexer may open now and those it must not (consent-gated, without Full
+/// Disk Access). Linux has no such gate.
+fn readable_roots(all: Vec<String>) -> (Vec<String>, Vec<String>) {
+    if truffle_index::sys::has_full_disk_access() {
+        return (all, Vec::new());
+    }
+    let home = std::env::var("HOME").unwrap_or_default();
+    let gated: Vec<Vec<u8>> = truffle_index::gated(&home);
+    all.into_iter().partition(|root| {
+        let r = root.as_bytes();
+        !gated.iter().any(|g| r == g.as_slice() || r.starts_with(g) && r.get(g.len()) == Some(&b'/') || g.starts_with(r) && g.get(r.len()) == Some(&b'/'))
+    })
 }
 
 /// Where the daemon's meaning index lives, for `status`.

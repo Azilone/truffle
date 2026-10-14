@@ -801,7 +801,7 @@ fn watch(
                 .filter(|part| !part.is_empty())
                 .any(|part| {
                     part.starts_with('.')
-                        || truffle_semantic::rules::SKIPPED_FOLDER_NAMES.contains(&part)
+                        || truffle_semantic::rules::is_skipped_name(part)
                         || code
                             && truffle_semantic::rules::CODE_SKIPPED_FOLDER_NAMES
                                 .iter()

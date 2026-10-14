@@ -355,7 +355,7 @@ pub fn skip_reason_for_folder(
     if name.ends_with(".noindex") {
         return Some(".noindex folder");
     }
-    if SKIPPED_FOLDER_NAMES.contains(&name.as_str()) {
+    if is_skipped_name(&name) {
         return Some("developer, system or cache folder");
     }
     let text = folder.to_string_lossy();
@@ -397,6 +397,16 @@ pub fn system_folders() -> Vec<String> {
     out
 }
 
+/// Folder names never walked (lowercase): the fixed list, and the shapes package managers and tools give their
+/// caches and metadata (`uv-cache`, `pip_cache`, `requests-2.32.5.dist-info`, `foo.egg-info`).
+pub fn is_skipped_name(lower: &str) -> bool {
+    SKIPPED_FOLDER_NAMES.contains(&lower)
+        || lower.ends_with("-cache")
+        || lower.ends_with("_cache")
+        || lower.ends_with(".dist-info")
+        || lower.ends_with(".egg-info")
+}
+
 /// Whether a change in `dir` (inside `root`) can matter to the meaning index: not in a hidden, cache, dependency or
 /// build folder, and not inside a code project (whose files only code search reads). Checked on every change the
 /// watcher reports, so a busy repo (a build writing `target/`) doesn't wake the indexer.
@@ -406,7 +416,7 @@ pub fn change_matters(dir: &Path, root: &Path) -> bool {
         let lower = part.to_lowercase();
         if part.starts_with('.')
             || lower.ends_with(".noindex")
-            || SKIPPED_FOLDER_NAMES.contains(&lower.as_str())
+            || is_skipped_name(&lower)
             || CODE_SKIPPED_FOLDER_NAMES.contains(&lower.as_str())
         {
             return false;
@@ -634,6 +644,8 @@ mod tests {
         assert_eq!(reason("/Users/me/Applications/Foo.app"), Some("app or bundle"));
         assert_eq!(reason("/mnt/d/Photos/Old/2019"), Some("excluded folder"));
         assert_eq!(reason("/mnt/d/Photos/Older"), None);
+        assert_eq!(reason("/w/uv-cache"), Some("developer, system or cache folder"));
+        assert_eq!(reason("/w/requests-2.32.5.dist-info"), Some("developer, system or cache folder"));
         assert_eq!(reason("/mnt/d/archive.noindex"), Some(".noindex folder"));
         assert!(is_project_root(["src", "Cargo.toml"]));
         assert!(is_project_root(["App.sln", "README.md"]));
