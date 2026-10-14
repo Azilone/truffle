@@ -177,12 +177,12 @@ fn place(hit: &SearchHit) -> Option<String> {
     })
 }
 
-/// The eval's base as a Windows path: "~" is the profile folder, and TRUFFLE_TESTBED stands for ~/DigUpTestbed.
+/// The eval's base as a path: "~" is home, and TRUFFLE_TESTBED stands for ~/DigUpTestbed.
 fn expand_base(base: &str) -> String {
     if let (Some(testbed), Some(rest)) = (std::env::var_os("TRUFFLE_TESTBED"), base.strip_prefix("~/DigUpTestbed")) {
         return format!("{}{}", testbed.to_string_lossy().trim_end_matches(['\\', '/']), rest.to_string());
     }
-    if let (Some(home), Some(rest)) = (std::env::var_os("USERPROFILE"), base.strip_prefix('~')) {
+    if let (Some(home), Some(rest)) = (std::env::var_os("HOME"), base.strip_prefix('~')) {
         return format!("{}{}", home.to_string_lossy(), rest.to_string());
     }
     base.to_string()

@@ -3,11 +3,21 @@ on: [push, pull_request]
 jobs:
   test:
     strategy:
+      fail-fast: false
       matrix:
         os: [macos-latest, ubuntu-latest, ubuntu-24.04-arm]
     runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v4
+        with:
+          submodules: true
       - uses: dtolnay/rust-toolchain@stable
+      - if: runner.os == 'Linux'
+        run: sudo apt-get update && sudo apt-get install -y cmake ffmpeg
+      - uses: Swatinem/rust-cache@v2
+      # The model isn't downloaded here: the reference-vector tests say SKIPPED and pass.
       - run: cargo test --release
-      - run: cargo build --release --all-targets
+      - name: Raycast extension
+        if: runner.os == 'macOS'
+        working-directory: raycast
+        run: npm ci && npx tsc --noEmit && node --test --experimental-strip-types src/query.test.ts
