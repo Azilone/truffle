@@ -4,3 +4,7 @@ Truffle includes work from these projects, under their MIT licenses:
   crates/truffle-index started as fsearch 0.2.1 (commit 88e63fd); its license is in LICENSE-fsearch.
 - DigUp (https://github.com/ARahim3/DigUp), Copyright (c) Abdur Rahim.
   Indexing rules, chunking constants and the hybrid search design are ported from it.
+- trovara (https://github.com/Subhankar-Patra1/trovara), Copyright (c) 2026 Subhankar Patra.
+  crates/truffle-embed started as trovara-llama; its license is in LICENSE-trovara.
+- llama.cpp (https://github.com/ggml-org/llama.cpp), MIT, built from third_party/llama.cpp (b11461).
+- The reference vectors in crates/truffle-embed/tests/fixtures come from DigUp.
