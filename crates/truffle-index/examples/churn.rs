@@ -15,11 +15,11 @@
 //! into one segment: what the index would be with nothing dead.
 #![allow(clippy::type_complexity)]
 
-use fsearch::Grep;
-use fsearch::content::{self, Content};
-use fsearch::index::Index;
-use fsearch::live::Live;
-use fsearch::query::Query;
+use truffle_index::Grep;
+use truffle_index::content::{self, Content};
+use truffle_index::index::Index;
+use truffle_index::live::Live;
+use truffle_index::query::Query;
 use serde_json::json;
 use std::collections::BTreeSet;
 use std::io::Write;

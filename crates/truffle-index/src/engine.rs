@@ -159,7 +159,7 @@ fn pool() -> &'static rayon::ThreadPool {
     static POOL: std::sync::OnceLock<rayon::ThreadPool> = std::sync::OnceLock::new();
     POOL.get_or_init(|| {
         rayon::ThreadPoolBuilder::new()
-            .thread_name(|i| format!("fsearch-search-{i}"))
+            .thread_name(|i| format!("truffle-search-{i}"))
             .start_handler(|_| {
                 crate::sys::set_qos(crate::sys::Qos::Interactive);
                 crate::alloc::keep_on_this_thread();
@@ -183,7 +183,7 @@ fn now_ns() -> u64 {
 fn warmer() -> &'static std::thread::Thread {
     static T: std::sync::OnceLock<std::thread::Thread> = std::sync::OnceLock::new();
     T.get_or_init(|| {
-        let t = std::thread::Builder::new().name("fsearch-warm".into()).spawn(|| {
+        let t = std::thread::Builder::new().name("truffle-warm".into()).spawn(|| {
             crate::sys::set_qos(crate::sys::Qos::Interactive);
             loop {
                 let (from, until, now) = (WARM_FROM.load(Ordering::SeqCst), WARM_UNTIL.load(Ordering::SeqCst), now_ns());
@@ -236,9 +236,9 @@ impl Engine {
         let skip: Vec<Vec<u8>> = match opts.skip {
             // ("/a/" is /a; an empty entry would block everything.)
             Some(v) => v.iter().map(|p| crate::live::normalize(p.as_os_str().as_bytes())).filter(|p| !p.is_empty()).collect(),
-            None if has_full_disk_access() && std::env::var_os("FSEARCH_RESTRICT").is_none() => Vec::new(),
+            None if has_full_disk_access() && std::env::var_os("TRUFFLE_RESTRICT").is_none() => Vec::new(),
             None => {
-                log("no Full Disk Access: skipping consent-gated folders (grant it to fsearch to index everything)");
+                log("no Full Disk Access: skipping consent-gated folders (grant it to truffle to index everything)");
                 gated(&opts.home)
             }
         };
@@ -281,9 +281,9 @@ impl Engine {
         let s = shared.clone();
         // Starting the stream (loading CoreServices) and faulting a saved
         // index in take ms each: done once searches run on the index as
-        // mapped, so a restart's first answer needn't wait (`fsearch <query>`
+        // mapped, so a restart's first answer needn't wait (`truffle <query>`
         // with no daemon running: 33 -> 27 ms on the M6).
-        spawn("fsearch-apply", move || {
+        spawn("truffle-apply", move || {
             let (live, replay) = match loading {
                 Some(b) => {
                     log(format!("loaded {} entries, replaying events since {}", b.n, b.event_id));
@@ -576,7 +576,7 @@ impl Shared {
 fn start_content(s: &Arc<Shared>) {
     let Some(rx) = s.content_rx.lock().unwrap().take() else { return };
     let s = s.clone();
-    spawn("fsearch-content", move || content_loop(&s, rx));
+    spawn("truffle-content", move || content_loop(&s, rx));
 }
 
 /// A follower takes over the index files once their owner is gone.
@@ -1207,13 +1207,13 @@ mod tests {
     /// crawls the disk). walk::SKIP is set once per process, so every test
     /// passes the same list: folders that don't exist, written oddly.
     fn follower(name: &str, home: &str) -> Engine {
-        let d = std::env::temp_dir().join(format!("fsearch-engine-{}-{name}", std::process::id()));
+        let d = std::env::temp_dir().join(format!("truffle-engine-{}-{name}", std::process::id()));
         let _ = std::fs::remove_dir_all(&d);
         std::fs::create_dir_all(&d).unwrap();
         let held = std::fs::File::create(d.join("daemon.lock")).unwrap();
         assert!(try_lock(&held));
         std::mem::forget(held);
-        let skip = Some(vec![PathBuf::from("/nonexistent-fsearch-skip/"), PathBuf::new()]);
+        let skip = Some(vec![PathBuf::from("/nonexistent-truffle-skip/"), PathBuf::new()]);
         let e = Engine::start(Options { dir: d.clone(), home: home.into(), skip }).unwrap();
         let _ = std::fs::remove_dir_all(&d);
         e
@@ -1233,6 +1233,6 @@ mod tests {
     #[test]
     fn skip_entries() {
         follower("skip", "/h");
-        assert!(walk::blocked(b"/nonexistent-fsearch-skip/x") && !walk::blocked(b"/usr"));
+        assert!(walk::blocked(b"/nonexistent-truffle-skip/x") && !walk::blocked(b"/usr"));
     }
 }

@@ -1,4 +1,4 @@
-//! `fsearch mcp`: a Model Context Protocol server on stdin/stdout for coding
+//! `truffle mcp`: a Model Context Protocol server on stdin/stdout for coding
 //! agents (Claude Code, Codex, ...): JSON-RPC 2.0, one message per line. The
 //! tools are fff-mcp's (find_files, grep, multi_grep) so prompts written for
 //! it work here. Each call is a request or two to the shared daemon (started
@@ -22,7 +22,7 @@ const WAIT_INDEX: Duration = Duration::from_secs(30);
 /// unlucky query; a definition lookup takes five).
 const MAX_ASKS: usize = 16;
 
-const INSTRUCTIONS: &str = "fsearch: indexed search over this project (or any folder, or the whole disk with path \"/\").
+const INSTRUCTIONS: &str = "truffle: indexed search over this project (or any folder, or the whole disk with path \"/\").
 - grep: file contents; the default for any identifier or text. Definitions come first, with their first lines.
 - find_files: file names (fuzzy, typo-tolerant), to locate a file or see what exists.
 - multi_grep: several spellings at once (snake_case, CamelCase), OR'd.
@@ -124,7 +124,7 @@ impl Session {
                     json!({
                         "protocolVersion": version,
                         "capabilities": {"tools": {}},
-                        "serverInfo": {"name": "fsearch", "version": env!("CARGO_PKG_VERSION")},
+                        "serverInfo": {"name": "truffle", "version": env!("CARGO_PKG_VERSION")},
                         "instructions": INSTRUCTIONS,
                     }),
                 )
@@ -160,7 +160,7 @@ impl Session {
 
     fn ask_roots(&mut self) {
         self.asked_roots += 1;
-        self.outbox.push(json!({"jsonrpc": "2.0", "id": format!("fsearch-roots-{}", self.asked_roots), "method": "roots/list"}));
+        self.outbox.push(json!({"jsonrpc": "2.0", "id": format!("truffle-roots-{}", self.asked_roots), "method": "roots/list"}));
     }
 
     fn ask(&self, req: &Value) -> Result<Value, String> {
@@ -742,7 +742,7 @@ impl View {
 fn ask_at(dir: &Path, req: &Value) -> Result<Value, String> {
     let t = Instant::now();
     loop {
-        let mut s = crate::server::connect(dir).map_err(|e| format!("cannot reach the fsearch daemon: {e}"))?;
+        let mut s = crate::server::connect(dir).map_err(|e| format!("cannot reach the truffle daemon: {e}"))?;
         s.write_all(format!("{req}\n").as_bytes()).map_err(|e| e.to_string())?;
         let _ = s.shutdown(std::net::Shutdown::Write);
         let mut line = String::new();
@@ -867,7 +867,7 @@ fn patterns(v: &Value) -> Vec<String> {
 }
 
 /// A tool query taken apart: name words (find_files) or the text (grep),
-/// fsearch filters, and path globs for the daemon.
+/// truffle filters, and path globs for the daemon.
 #[derive(Default)]
 struct Parts {
     words: Vec<String>,
@@ -875,7 +875,7 @@ struct Parts {
     globs: Vec<String>,
 }
 
-/// fsearch filters a query may carry as they are. Grep text is code, so
+/// truffle filters a query may carry as they are. Grep text is code, so
 /// there only the ones code rarely spells take effect.
 const FILTERS: &[&str] = &["ext", "type", "kind", "in", "size", "mtime", "modified", "re", "path", "git", "limit"];
 const GREP_FILTERS: &[&str] = &["ext", "in", "git", "size", "mtime"];
@@ -1298,7 +1298,7 @@ mod tests {
     #[test]
     fn context_past_the_end() {
         // The file shrank since it was grepped: its line is past the end.
-        let path = std::env::temp_dir().join(format!("fsearch-mcp-{}.txt", std::process::id()));
+        let path = std::env::temp_dir().join(format!("truffle-mcp-{}.txt", std::process::id()));
         std::fs::write(&path, "a\nb\n").unwrap();
         let r = json!({"files": [{"path": path.to_str().unwrap(), "matches": [{"line": 50, "text": "x"}]}]});
         let out = View { base: "/".into(), head: None }.list_matches(&r, "x", false, None, Out::Content, 20, 2, 0, None);

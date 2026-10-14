@@ -1,0 +1,6 @@
+Truffle includes work from these projects, under their MIT licenses:
+
+- fsearch (https://github.com/noahdunnagan/fsearch), Copyright (c) 2026 Noah Dunnagan.
+  crates/truffle-index started as fsearch 0.2.1 (commit 88e63fd); its license is in LICENSE-fsearch.
+- DigUp (https://github.com/ARahim3/DigUp), Copyright (c) Abdur Rahim.
+  Indexing rules, chunking constants and the hybrid search design are ported from it.

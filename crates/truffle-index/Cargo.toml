@@ -6,7 +6,7 @@ edition.workspace = true
 license.workspace = true
 
 [lib]
-name = "fsearch"
+name = "truffle_index"
 
 [[bin]]
 name = "truffle"

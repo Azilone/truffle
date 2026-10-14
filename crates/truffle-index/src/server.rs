@@ -1,10 +1,10 @@
 //! The daemon: one `Engine`, answering JSON lines over a unix socket.
-//! `fsearch stdio`, `fsearch mcp` and the CLI are thin clients.
+//! `truffle stdio`, `truffle mcp` and the CLI are thin clients.
 
 use crate::frecency::{self, Frecency};
 use crate::git::{self, Git};
-use fsearch::walk::{KIND_DIR, KIND_FILE, KIND_LINK, KIND_OTHER};
-use fsearch::{Engine, Found, GrepMode, Options, Query};
+use truffle_index::walk::{KIND_DIR, KIND_FILE, KIND_LINK, KIND_OTHER};
+use truffle_index::{Engine, Found, GrepMode, Options, Query};
 use regex::bytes::Regex;
 use serde_json::{Value, json};
 use std::io::{BufRead, BufReader, Write};
@@ -15,17 +15,17 @@ use std::sync::Arc;
 use std::time::{Duration, Instant};
 
 pub fn socket_path(dir: &Path) -> PathBuf {
-    dir.join("fsearch.sock")
+    dir.join("truffle.sock")
 }
 
 pub fn serve(dir: PathBuf, home: String) {
     // One daemon per socket. (The engine's own lock decides who writes the
-    // index: an app embedding fsearch may own it while the daemon follows.)
+    // index: an app embedding truffle may own it while the daemon follows.)
     std::fs::create_dir_all(&dir).ok();
     // Opened without truncating: a loser must not wipe the owner's pid.
     let Ok(mut lock) = std::fs::OpenOptions::new().write(true).create(true).truncate(false).open(dir.join("socket.lock")) else { return };
     if !try_lock(&lock) {
-        eprintln!("{} another fsearch daemon is running", fsearch::query::now_secs());
+        eprintln!("{} another truffle daemon is running", truffle_index::query::now_secs());
         return;
     }
     // The pid lets `stop` find us.
@@ -35,7 +35,7 @@ pub fn serve(dir: PathBuf, home: String) {
     let engine = match Engine::start(Options { dir: dir.clone(), home, skip: None }) {
         Ok(e) => e,
         Err(e) => {
-            eprintln!("{} {e}", fsearch::query::now_secs());
+            eprintln!("{} {e}", truffle_index::query::now_secs());
             return;
         }
     };
@@ -47,7 +47,7 @@ pub fn serve(dir: PathBuf, home: String) {
     let listener = match UnixListener::bind(&sock) {
         Ok(l) => l,
         Err(e) => {
-            eprintln!("{} {}: {e}", fsearch::query::now_secs(), sock.display());
+            eprintln!("{} {}: {e}", truffle_index::query::now_secs(), sock.display());
             return;
         }
     };
@@ -100,7 +100,7 @@ const WARM: Duration = Duration::from_millis(250);
 
 fn handle(mut conn: UnixStream, cx: &Ctx) {
     // Content searches run on this thread: keep them on performance cores.
-    fsearch::sys::set_qos(fsearch::sys::Qos::Interactive);
+    truffle_index::sys::set_qos(truffle_index::sys::Qos::Interactive);
     let Ok(r) = conn.try_clone() else { return };
     let mut out = Vec::new();
     for line in BufReader::new(r).lines() {
@@ -214,7 +214,7 @@ fn run(v: &Value, cx: &Ctx) -> Result<Reply, String> {
                 (_, Some(Value::Array(a))) => a.iter().filter_map(Value::as_str).collect(),
                 _ => return Err("open needs a path (or paths)".into()),
             };
-            let now = fsearch::query::now_secs();
+            let now = truffle_index::query::now_secs();
             let scores: Vec<f32> = paths.iter().map(|p| cx.frecency.open(&real(p), now)).collect();
             Ok(Reply::Value(json!({"ok": true, "scores": scores})))
         }
@@ -222,13 +222,13 @@ fn run(v: &Value, cx: &Ctx) -> Result<Reply, String> {
             // What you worked on lately (under `in:`, passing the query),
             // best first: opens and your commits (see `frecent`).
             let (q, _) = parse_request(v, engine.home())?;
-            let top = frecent(cx, q.scope.as_deref(), fsearch::query::now_secs());
+            let top = frecent(cx, q.scope.as_deref(), truffle_index::query::now_secs());
             let hits = top.into_iter().filter_map(|(p, s)| Some(Found { score: (s * 100.0) as i32, ..found(&q, &p)? }));
             Ok(Reply::Hits(hits.take(q.limit).collect(), 0, None, v.get("git") == Some(&Value::Bool(true))))
         }
         "git" => {
             // The repo holding a folder, its status read in the background
-            // (`fsearch mcp` asks at start, so the first search has it).
+            // (`truffle mcp` asks at start, so the first search has it).
             let p = v.get("path").and_then(Value::as_str).ok_or("git needs a path")?;
             let r = cx.git.load(&[&real(p)[..], b"/."].concat());
             let snap = r.as_ref().and_then(|r| r.snap(Duration::ZERO));
@@ -595,7 +595,7 @@ fn frecent(cx: &Ctx, dir: Option<&[u8]>, now: u32) -> Vec<(Vec<u8>, f32)> {
 /// (`nearness`). What it can't do: lift a file the query ranks below them
 /// (the ranking in `query.rs` knows nothing of either).
 fn rerank(cx: &Ctx, hits: &mut [Found], boost: bool, near: Option<&[u8]>) {
-    let now = fsearch::query::now_secs();
+    let now = truffle_index::query::now_secs();
     let n = hits.len().min(RERANK);
     for f in &mut hits[..n] {
         let p = f.path.as_os_str().as_bytes();
@@ -759,15 +759,15 @@ fn grep(v: &Value, cx: &Ctx) -> Result<Value, String> {
         None => q.grep_mode,
     };
     let case = match v.get("case").and_then(Value::as_str) {
-        None | Some("smart") => fsearch::Case::Smart,
-        Some("sensitive") => fsearch::Case::Sensitive,
-        Some("insensitive") => fsearch::Case::Insensitive,
+        None | Some("smart") => truffle_index::Case::Smart,
+        Some("sensitive") => truffle_index::Case::Sensitive,
+        Some("insensitive") => truffle_index::Case::Insensitive,
         Some(c) => return Err(format!("unknown case {c}")),
     };
     let pattern = v.get("pattern").and_then(Value::as_str).map(str::to_string).or(q.grep.take());
     let mut g = match (v.get("patterns").and_then(Value::as_array), pattern) {
-        (Some(ps), _) => fsearch::Grep::any_of(&ps.iter().filter_map(Value::as_str).collect::<Vec<_>>(), case)?,
-        (None, Some(p)) => fsearch::Grep::with_case(&p, mode, case)?,
+        (Some(ps), _) => truffle_index::Grep::any_of(&ps.iter().filter_map(Value::as_str).collect::<Vec<_>>(), case)?,
+        (None, Some(p)) => truffle_index::Grep::with_case(&p, mode, case)?,
         (None, None) => return Err("grep needs a pattern".into()),
     };
     let file = v.get("file").and_then(Value::as_str).map(|f| match f.strip_prefix('~') {
@@ -787,7 +787,7 @@ fn grep(v: &Value, cx: &Ctx) -> Result<Value, String> {
     let t = Instant::now();
     let source = |indexed| if indexed { "index" } else { "scan" };
     let (r, source, next) = if let Some(f) = &file {
-        let r = fsearch::content::grep_file(&g, f.as_bytes());
+        let r = truffle_index::content::grep_file(&g, f.as_bytes());
         let next = r.next;
         (r, "file", next)
     } else if x.plain() {
@@ -798,10 +798,10 @@ fn grep(v: &Value, cx: &Ctx) -> Result<Value, String> {
         // Only the files git lists (modified...), newest first: read them.
         x.ready(cx, &q)?;
         let mut paths = from_git(cx, &q.clone_for_scan(), &x, MAX_GREP);
-        paths.retain(|f| f.kind & 3 == KIND_FILE && f.size <= fsearch::content::MAX_FILE && x.keep(&cx.git, f.path.as_os_str().as_bytes()));
+        paths.retain(|f| f.kind & 3 == KIND_FILE && f.size <= truffle_index::content::MAX_FILE && x.keep(&cx.git, f.path.as_os_str().as_bytes()));
         paths.sort_by_key(|f| std::cmp::Reverse(f.mtime));
         let paths: Vec<Vec<u8>> = paths.into_iter().map(|f| f.path.as_os_str().as_bytes().to_vec()).collect();
-        let mut r = fsearch::content::verify(&g, &paths, x.offset.saturating_add(q.limit).saturating_add(1));
+        let mut r = truffle_index::content::verify(&g, &paths, x.offset.saturating_add(q.limit).saturating_add(1));
         let next = x.cut(&mut r.files, q.limit).or((!r.complete).then_some(x.offset + r.files.len()));
         (r, "scan", next)
     } else {
@@ -812,7 +812,7 @@ fn grep(v: &Value, cx: &Ctx) -> Result<Value, String> {
             &x,
             x.offset.saturating_add(limit),
             MAX_GREP,
-            |f: &fsearch::FileMatches| x.keep(&cx.git, &f.path),
+            |f: &truffle_index::FileMatches| x.keep(&cx.git, &f.path),
             |n| {
                 q.limit = n;
                 let (mut r, indexed) = engine.grep(&q, &g)?;

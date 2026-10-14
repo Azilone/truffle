@@ -3126,7 +3126,7 @@ fn helpers() -> &'static Helpers {
         let h: &'static Helpers = Box::leak(Box::new(Helpers { latest: Default::default(), bell: Default::default() }));
         let n = std::thread::available_parallelism().map_or(1, |n| n.get()).max(SCAN_READERS);
         for i in 1..n {
-            let spawned = std::thread::Builder::new().name(format!("fsearch-help-{i}")).spawn(move || {
+            let spawned = std::thread::Builder::new().name(format!("truffle-help-{i}")).spawn(move || {
                 // Someone is waiting: keep off the slow cores and out of the
                 // throttled IO tiers, and never download iCloud placeholders.
                 crate::sys::set_qos(crate::sys::Qos::Initiated);
@@ -3958,6 +3958,31 @@ fn find_folded(hay: &[u8], from: usize, needle: &[u8], pair: (usize, usize)) -> 
             i += 16;
         }
     }
+    #[cfg(target_arch = "x86_64")]
+    // Safety: as above; SSE2 is baseline on x86_64.
+    unsafe {
+        use std::arch::x86_64::*;
+        let (c1, c2) = (needle[pair.0], needle[pair.1]);
+        let case = |c: u8| _mm_set1_epi8(if c.is_ascii_lowercase() { 0x20 } else { 0 });
+        let (v1, v2, m1, m2) = (_mm_set1_epi8(c1 as i8), _mm_set1_epi8(c2 as i8), case(c1), case(c2));
+        while i + 16 <= last + 1 {
+            let p = hay.as_ptr().add(i);
+            let a = _mm_cmpeq_epi8(_mm_or_si128(_mm_loadu_si128(p.add(pair.0).cast()), m1), v1);
+            let b = _mm_cmpeq_epi8(_mm_or_si128(_mm_loadu_si128(p.add(pair.1).cast()), m2), v2);
+            // One bit per byte lane.
+            let mut bits = _mm_movemask_epi8(_mm_and_si128(a, b)) as u32;
+            while bits != 0 {
+                let c = i + bits.trailing_zeros() as usize;
+                if at(c) {
+                    return Some(c);
+                }
+                bits &= bits - 1;
+            }
+            i += 16;
+        }
+    }
+    #[cfg(not(any(target_arch = "aarch64", target_arch = "x86_64")))]
+    let _ = pair;
     (i..=last).find(|&c| at(c))
 }
 
@@ -4717,6 +4742,29 @@ fn open_ahead_sized(path: &[u8]) -> Option<(std::fs::File, u64)> {
 
 #[cfg(test)]
 mod tests {
+
+    /// The SIMD scan (NEON, SSE2) finds what a byte-by-byte scan finds.
+    #[test]
+    fn find_folded_matches_naive() {
+        let mut seed = 0x2545_f491_4f6c_dd1du64;
+        let mut rnd = || {
+            seed ^= seed << 13;
+            seed ^= seed >> 7;
+            seed ^= seed << 17;
+            seed
+        };
+        for _ in 0..3000 {
+            let n = (rnd() % 200) as usize;
+            let hay: Vec<u8> = (0..n).map(|_| b"abAB_xyXY .z"[(rnd() % 12) as usize]).collect();
+            let k = 1 + (rnd() % 4) as usize;
+            let needle: Vec<u8> = (0..k).map(|_| b"abxy_ ."[(rnd() % 7) as usize]).collect();
+            let pair = ((rnd() % k as u64) as usize, (rnd() % k as u64) as usize);
+            let pair = (pair.0.min(pair.1), pair.0.max(pair.1));
+            let from = (rnd() % (n as u64 + 1)) as usize;
+            let naive = (from..=n.saturating_sub(k)).filter(|_| n >= k).find(|&c| hay[c..c + k].iter().zip(&needle).all(|(&x, &y)| fold(x) == y));
+            assert_eq!(find_folded(&hay, from, &needle, pair), naive, "{hay:?} {needle:?} {pair:?} {from}");
+        }
+    }
     use super::*;
     use crate::walk::{Listing, RawEnt};
 
@@ -4737,7 +4785,7 @@ mod tests {
     /// were.
     #[test]
     fn case_folds_through_the_index() {
-        let d = std::env::temp_dir().join(format!("fsearch-fold-{}", std::process::id()));
+        let d = std::env::temp_dir().join(format!("truffle-fold-{}", std::process::id()));
         let _ = std::fs::remove_dir_all(&d);
         std::fs::create_dir_all(&d).unwrap();
         let mut docs = Docs::default();
@@ -4791,7 +4839,7 @@ mod tests {
     /// whole, so a corrupt one) are not counted as dead docs.
     #[test]
     fn dead_bits_past_the_docs() {
-        let d = std::env::temp_dir().join(format!("fsearch-dead-{}", std::process::id()));
+        let d = std::env::temp_dir().join(format!("truffle-dead-{}", std::process::id()));
         let _ = std::fs::remove_dir_all(&d);
         std::fs::create_dir_all(&d).unwrap();
         let p = d.join("a.txt");

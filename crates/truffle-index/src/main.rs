@@ -3,35 +3,34 @@ mod git;
 mod mcp;
 mod server;
 
-use fsearch::{index, live, query};
+use truffle_index::{index, live, query};
 
 use std::io::{BufRead, BufReader, Write};
 use std::path::PathBuf;
 use std::time::Instant;
 
-/// See `fsearch::alloc`.
+/// See `truffle_index::alloc`.
 #[global_allocator]
-static GLOBAL: fsearch::alloc::Alloc = fsearch::alloc::Alloc;
+static GLOBAL: truffle_index::alloc::Alloc = truffle_index::alloc::Alloc;
 
 const USAGE: &str = "usage:
-  fsearch <query...> [--json]   search (starts the daemon if needed)
-  fsearch stdio                 JSON lines on stdin/stdout
-  fsearch mcp                   MCP server on stdin/stdout, for coding agents
-  fsearch serve                 run the daemon in the foreground
-  fsearch status
-  fsearch install [--login]      copy to ~/.local/bin; --login also starts the daemon at login
-                                (needs Full Disk Access granted to ~/.local/bin/fsearch)
-  fsearch uninstall             remove the login agent (keeps the index)
-  fsearch bench <query...>      time a query in-process against the saved index";
-
-const LABEL: &str = "mt.nd.fsearch";
+  truffle <query...> [--json]   search (starts the daemon if needed)
+  truffle stdio                 JSON lines on stdin/stdout
+  truffle mcp                   MCP server on stdin/stdout, for coding agents
+  truffle serve                 run the daemon in the foreground
+  truffle status
+  truffle install [--login]     copy to ~/.local/bin; --login also starts the daemon at login
+                                (a LaunchAgent on macOS, which needs Full Disk Access granted
+                                to ~/.local/bin/truffle; a systemd user service on Linux)
+  truffle uninstall             remove the login service (keeps the index)
+  truffle bench <query...>      time a query in-process against the saved index";
 
 fn home() -> String {
     std::env::var("HOME").unwrap_or_else(|_| "/".into())
 }
 
 fn data_dir() -> PathBuf {
-    let d = PathBuf::from(home()).join("Library/Application Support/FSearch");
+    let d = truffle_index::default_dir(&home());
     std::fs::create_dir_all(&d).ok();
     d
 }
@@ -40,7 +39,7 @@ fn main() {
     // Never let a search download iCloud placeholders: opening or listing a
     // dataless file/dir fails fast instead of materializing it.
     // (IOPOL_TYPE_VFS_MATERIALIZE_DATALESS_FILES, IOPOL_SCOPE_PROCESS, OFF)
-    fsearch::sys::no_materialize_process();
+    truffle_index::sys::no_materialize_process();
     let args: Vec<String> = std::env::args().skip(1).collect();
     match args.first().map(String::as_str) {
         None | Some("-h" | "--help") => eprintln!("{USAGE}"),
@@ -130,18 +129,18 @@ fn stdio() {
 
 fn bench(qs: &str) {
     let dir = data_dir();
-    let idx = index::Index::load(&dir.join("index.bin")).unwrap_or_else(|| die("no index yet; run fsearch serve"));
+    let idx = index::Index::load(&dir.join("index.bin")).unwrap_or_else(|| die("no index yet; run truffle serve"));
     let live = live::Live::new(idx);
     let home = home();
     let mut q = query::Query::parse(qs, &home).unwrap_or_else(|e| die(&e));
     // Like the daemon: a content search when the query has a pattern, on
     // user-interactive threads, paths included.
-    let grep = q.grep.take().map(|p| fsearch::Grep::new(&p, q.grep_mode).unwrap_or_else(|e| die(&e)));
-    let content = grep.as_ref().map(|_| fsearch::content::Content::open_shared(dir.join("content")));
+    let grep = q.grep.take().map(|p| truffle_index::Grep::new(&p, q.grep_mode).unwrap_or_else(|e| die(&e)));
+    let content = grep.as_ref().map(|_| truffle_index::content::Content::open_shared(dir.join("content")));
     let pool = rayon::ThreadPoolBuilder::new()
         .start_handler(|_| {
-            fsearch::sys::set_qos(fsearch::sys::Qos::Interactive);
-            fsearch::alloc::keep_on_this_thread();
+            truffle_index::sys::set_qos(truffle_index::sys::Qos::Interactive);
+            truffle_index::alloc::keep_on_this_thread();
         })
         .build()
         .unwrap();
@@ -157,13 +156,13 @@ fn bench(qs: &str) {
                 })
                 .collect();
         };
-        let r = if q.scope.as_ref().is_none_or(|s| fsearch::content::in_scope(s, home.as_bytes())) {
+        let r = if q.scope.as_ref().is_none_or(|s| truffle_index::content::in_scope(s, home.as_bytes())) {
             pool.install(|| c.search(g, &q))
         } else {
-            let paths = pool.install(|| fsearch::content::scan_paths(&live, q.clone_for_scan()));
-            fsearch::content::verify(g, &paths, q.limit)
+            let paths = pool.install(|| truffle_index::content::scan_paths(&live, q.clone_for_scan()));
+            truffle_index::content::verify(g, &paths, q.limit)
         };
-        let first = |f: &fsearch::FileMatches| f.lines.first().map_or(String::new(), |(n, t)| format!("{n}: {}", t.trim()));
+        let first = |f: &truffle_index::FileMatches| f.lines.first().map_or(String::new(), |(n, t)| format!("{n}: {}", t.trim()));
         r.files.iter().map(|f| format!("{}:{}", String::from_utf8_lossy(&f.path), first(f))).collect()
     };
     // Between runs, another name search: a repeat would be answered from
@@ -185,26 +184,13 @@ fn bench(qs: &str) {
     eprintln!("first {first:.2?}  median {:.2?}  min {:.2?}", times[times.len() / 2], times[0]);
 }
 
-fn plist_path() -> PathBuf {
-    PathBuf::from(home()).join(format!("Library/LaunchAgents/{LABEL}.plist"))
-}
-
-fn launchctl(args: &[&str]) -> bool {
-    std::process::Command::new("launchctl").args(args).stderr(std::process::Stdio::null()).status().is_ok_and(|s| s.success())
-}
-
-fn domain() -> String {
-    format!("gui/{}", unsafe { libc::getuid() })
-}
-
 fn install(login: bool) {
     // A plain reinstall keeps an existing login agent.
-    let login = login || plist_path().exists();
-    let bin = PathBuf::from(home()).join(".local/bin/fsearch");
-    // Stop the old daemon so the next one runs the new binary. Unload the
-    // login agent first, or KeepAlive would restart it straight away.
-    let target = format!("{}/{LABEL}", domain());
-    launchctl(&["bootout", &target]);
+    let login = login || service::installed();
+    let bin = PathBuf::from(home()).join(".local/bin/truffle");
+    // Stop the old daemon so the next one runs the new binary. Stop the login
+    // service first, or its restart policy would bring it straight back.
+    service::stop();
     server::stop(&data_dir()).unwrap_or_else(|e| die(&e));
     std::fs::create_dir_all(bin.parent().unwrap()).unwrap();
     // Replace, never overwrite in place: a rewritten signed binary at the same
@@ -213,14 +199,53 @@ fn install(login: bool) {
     let tmp = bin.with_extension("new");
     std::fs::copy(std::env::current_exe().unwrap(), &tmp).and_then(|_| std::fs::rename(&tmp, &bin)).unwrap_or_else(|e| die(&format!("copy: {e}")));
     let agents =
-        format!("for coding agents: claude mcp add -s user fsearch -- {0} mcp\n                   codex mcp add fsearch -- {0} mcp", bin.display());
+        format!("for coding agents: claude mcp add -s user truffle -- {0} mcp\n                   codex mcp add truffle -- {0} mcp", bin.display());
     if !login {
         println!("installed {}; the daemon starts on first use\n{agents}", bin.display());
         return;
     }
-    let log = data_dir().join("daemon.log");
-    let plist = format!(
-        r#"<?xml version="1.0" encoding="UTF-8"?>
+    service::start(&bin, &data_dir().join("daemon.log"));
+    println!("installed {} ({})\n{agents}", bin.display(), service::NAME);
+}
+
+fn uninstall() {
+    service::remove();
+    println!("removed {}; index kept in {}", service::NAME, data_dir().display());
+}
+
+/// The daemon as a login item: a LaunchAgent on macOS, a systemd user
+/// service on Linux. Both restart it if it dies.
+#[cfg(target_os = "macos")]
+mod service {
+    use super::{die, home};
+    use std::path::{Path, PathBuf};
+
+    const LABEL: &str = "dev.truffle.daemon";
+    pub const NAME: &str = "LaunchAgent dev.truffle.daemon";
+
+    fn plist_path() -> PathBuf {
+        PathBuf::from(home()).join(format!("Library/LaunchAgents/{LABEL}.plist"))
+    }
+
+    fn launchctl(args: &[&str]) -> bool {
+        std::process::Command::new("launchctl").args(args).stderr(std::process::Stdio::null()).status().is_ok_and(|s| s.success())
+    }
+
+    fn domain() -> String {
+        format!("gui/{}", unsafe { libc::getuid() })
+    }
+
+    pub fn installed() -> bool {
+        plist_path().exists()
+    }
+
+    pub fn stop() {
+        launchctl(&["bootout", &format!("{}/{LABEL}", domain())]);
+    }
+
+    pub fn start(bin: &Path, log: &Path) {
+        let plist = format!(
+            r#"<?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
 <dict>
@@ -233,31 +258,78 @@ fn install(login: bool) {
 </dict>
 </plist>
 "#,
-        bin.display(),
-        log.display(),
-        log.display()
-    );
-    std::fs::write(plist_path(), plist).unwrap();
-    // bootout returns before the old job is fully gone; bootstrap fails
-    // until it is.
-    let bootstrap = || launchctl(&["bootstrap", &domain(), plist_path().to_str().unwrap()]);
-    let retry = || {
-        std::thread::sleep(std::time::Duration::from_millis(100));
-        false
-    };
-    if !(0..50).any(|_| bootstrap() || retry()) {
-        die("launchctl bootstrap failed");
+            bin.display(),
+            log.display(),
+            log.display()
+        );
+        std::fs::write(plist_path(), plist).unwrap();
+        // bootout returns before the old job is fully gone; bootstrap fails
+        // until it is.
+        let bootstrap = || launchctl(&["bootstrap", &domain(), plist_path().to_str().unwrap()]);
+        let retry = || {
+            std::thread::sleep(std::time::Duration::from_millis(100));
+            false
+        };
+        if !(0..50).any(|_| bootstrap() || retry()) {
+            die("launchctl bootstrap failed");
+        }
     }
-    println!("installed {} (LaunchAgent {LABEL})\n{agents}", bin.display());
+
+    pub fn remove() {
+        stop();
+        let _ = std::fs::remove_file(plist_path());
+    }
 }
 
-fn uninstall() {
-    launchctl(&["bootout", &format!("{}/{LABEL}", domain())]);
-    let _ = std::fs::remove_file(plist_path());
-    println!("removed LaunchAgent {LABEL}; index kept in {}", data_dir().display());
+#[cfg(target_os = "linux")]
+mod service {
+    use super::{die, home};
+    use std::path::{Path, PathBuf};
+
+    pub const NAME: &str = "systemd user service truffle.service";
+
+    fn unit_path() -> PathBuf {
+        let config = std::env::var_os("XDG_CONFIG_HOME").filter(|v| !v.is_empty()).map_or_else(|| PathBuf::from(home()).join(".config"), PathBuf::from);
+        config.join("systemd/user/truffle.service")
+    }
+
+    fn systemctl(args: &[&str]) -> bool {
+        std::process::Command::new("systemctl").arg("--user").args(args).stderr(std::process::Stdio::null()).status().is_ok_and(|s| s.success())
+    }
+
+    pub fn installed() -> bool {
+        unit_path().exists()
+    }
+
+    pub fn stop() {
+        if installed() {
+            systemctl(&["stop", "truffle.service"]);
+        }
+    }
+
+    pub fn start(bin: &Path, log: &Path) {
+        let unit = format!(
+            "[Unit]\nDescription=Truffle file index\n\n[Service]\nExecStart={} serve\nRestart=on-failure\nNice=5\nStandardOutput=append:{}\nStandardError=append:{}\n\n[Install]\nWantedBy=default.target\n",
+            bin.display(),
+            log.display(),
+            log.display()
+        );
+        let path = unit_path();
+        std::fs::create_dir_all(path.parent().unwrap()).unwrap();
+        std::fs::write(&path, unit).unwrap();
+        if !(systemctl(&["daemon-reload"]) && systemctl(&["enable", "--now", "truffle.service"])) {
+            die("systemctl --user enable failed (no user systemd?); run `truffle serve` from your session instead");
+        }
+    }
+
+    pub fn remove() {
+        systemctl(&["disable", "--now", "truffle.service"]);
+        let _ = std::fs::remove_file(unit_path());
+        systemctl(&["daemon-reload"]);
+    }
 }
 
 fn die(msg: &str) -> ! {
-    eprintln!("fsearch: {msg}");
+    eprintln!("truffle: {msg}");
     std::process::exit(1)
 }

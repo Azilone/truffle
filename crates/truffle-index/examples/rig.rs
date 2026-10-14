@@ -11,18 +11,18 @@
 //! ones, so the daemon keeps running untouched). Compare builds with
 //! `demo/abba.py`.
 
-use fsearch::Grep;
-use fsearch::content::{self, Content};
-use fsearch::index::Index;
-use fsearch::live::Live;
-use fsearch::query::{Query, Searcher};
+use truffle_index::Grep;
+use truffle_index::content::{self, Content};
+use truffle_index::index::Index;
+use truffle_index::live::Live;
+use truffle_index::query::{Query, Searcher};
 use serde_json::{Value, json};
 use std::path::Path;
 use std::time::{Duration, Instant};
 
 /// The daemon's allocator, so timings are the daemon's.
 #[global_allocator]
-static ALLOC: fsearch::alloc::Alloc = fsearch::alloc::Alloc;
+static ALLOC: truffle_index::alloc::Alloc = truffle_index::alloc::Alloc;
 
 fn main() {
     let a: Vec<String> = std::env::args().skip(1).collect();
@@ -110,7 +110,7 @@ fn gen_corpus(snap: &Path, out: &str) {
     let filters = [
         "ext:rs engine", "type:image screenshot", "kind:dir node_modules", "type:app safari", "in:~/Developer main",
         "size:>100mb", "mtime:<1d", "re:^IMG_[0-9]+", "path:Developer.*swift$ view", "main !test", "'main.rs", "^Cargo",
-        "toml$", "ext:pdf", "a", "e s", "in:~/Developer ext:md readme", "type:code mtime:<7d", "kind:file size:>1gb", "Developer/Tools fsearch",
+        "toml$", "ext:pdf", "a", "e s", "in:~/Developer ext:md readme", "type:code mtime:<7d", "kind:file size:>1gb", "Developer/Tools truffle",
     ];
     for f in filters {
         push("filter", f.into());
@@ -143,7 +143,7 @@ fn gen_corpus(snap: &Path, out: &str) {
         ("common", "grep:struct"), ("common", "\"grep:async fn\""), ("common", "grep:localhost"),
         ("regex", r"regex:fn\s+\w+_score"), ("regex", "regex:TODO|FIXME"), ("regex", r"regex:impl\s+\w+\s+for"), ("regex", "regex:[A-Z]{3,}_[A-Z]{3,}"),
         ("sym", "sym:Engine"), ("sym", "sym:main"), ("sym", "sym:Searcher"), ("sym", "sym:render"), ("sym", "sym:Config"),
-        ("scoped", "ext:rs grep:unsafe"), ("scoped", "in:~/Developer grep:TODO"), ("scoped", "ext:md grep:install"), ("scoped", "in:~/Developer/Tools/FSearch grep:fold"),
+        ("scoped", "ext:rs grep:unsafe"), ("scoped", "in:~/Developer grep:TODO"), ("scoped", "ext:md grep:install"), ("scoped", "in:~/Developer/Tools/Truffle grep:fold"),
         ("scan", "in:/etc grep:localhost"), ("scan", "in:/usr/share/doc grep:license"),
     ];
     grep.extend(fixed.iter().map(|(c, q)| (c.to_string(), q.to_string())));
@@ -223,8 +223,8 @@ fn run(snap: &Path, corpus: &str, out: &str, kinds: &str) {
     let load = ms(t.elapsed());
     let pool = rayon::ThreadPoolBuilder::new()
         .start_handler(|_| {
-            fsearch::sys::set_qos(fsearch::sys::Qos::Interactive);
-            fsearch::alloc::keep_on_this_thread();
+            truffle_index::sys::set_qos(truffle_index::sys::Qos::Interactive);
+            truffle_index::alloc::keep_on_this_thread();
         })
         .build()
         .unwrap();

@@ -1151,9 +1151,9 @@ fn fuzzy_score_capped(name: &[u8], wide: Wide, q: &[u8], cap: i32) -> Option<i32
     if let Some(s) = prefix_score(name, q, cap) {
         return Some(s);
     }
-    #[cfg(not(target_arch = "aarch64"))]
+    #[cfg(not(any(target_arch = "aarch64", target_arch = "x86_64")))]
     let _ = wide;
-    #[cfg(target_arch = "aarch64")]
+    #[cfg(any(target_arch = "aarch64", target_arch = "x86_64"))]
     if name.len() <= 64 && q.len() <= 32 {
         if let Some(w) = wide {
             return fuzzy_masked(name, w, q, cap);
@@ -1225,14 +1225,63 @@ impl Folded {
     }
 }
 
-/// `Folded` without NEON: the same masks, a byte at a time.
-#[cfg(not(target_arch = "aarch64"))]
+/// `Folded` with SSE2 (part of every x86_64): the same masks, from one
+/// movemask per 16 bytes.
+#[cfg(target_arch = "x86_64")]
+struct Folded {
+    v: [std::arch::x86_64::__m128i; 4],
+    valid: u64,
+}
+
+#[cfg(target_arch = "x86_64")]
+impl Folded {
+    #[inline(always)]
+    fn new(src: &[u8; 64], len: usize) -> Folded {
+        use std::arch::x86_64::*;
+        // Safety (here and below): SSE2 is baseline on x86_64; loads stay in
+        // `src`. x - 'A' <= 25 unsigned is min(x - 'A', 25) == x - 'A'.
+        let v = std::array::from_fn(|i| unsafe {
+            let x = _mm_loadu_si128(src.as_ptr().add(16 * i).cast());
+            let d = _mm_sub_epi8(x, _mm_set1_epi8(b'A' as i8));
+            let upper = _mm_cmpeq_epi8(_mm_min_epu8(d, _mm_set1_epi8(25)), d);
+            _mm_or_si128(x, _mm_and_si128(upper, _mm_set1_epi8(0x20)))
+        });
+        Folded { v, valid: u64::MAX.checked_shr(64 - len as u32).unwrap_or(0) }
+    }
+
+    /// Where bytes folding to `c` are.
+    #[inline(always)]
+    fn places(&self, c: u8) -> u64 {
+        use std::arch::x86_64::*;
+        self.pack(|x| unsafe { _mm_cmpeq_epi8(x, _mm_set1_epi8(c as i8)) })
+    }
+
+    /// Where ASCII digits are.
+    #[inline(always)]
+    fn digits(&self) -> u64 {
+        use std::arch::x86_64::*;
+        self.pack(|x| unsafe {
+            let d = _mm_sub_epi8(x, _mm_set1_epi8(b'0' as i8));
+            _mm_cmpeq_epi8(_mm_min_epu8(d, _mm_set1_epi8(9)), d)
+        })
+    }
+
+    #[inline(always)]
+    fn pack(&self, f: impl Fn(std::arch::x86_64::__m128i) -> std::arch::x86_64::__m128i) -> u64 {
+        use std::arch::x86_64::*;
+        let m = |i: usize| unsafe { _mm_movemask_epi8(f(self.v[i])) as u16 as u64 };
+        (m(0) | m(1) << 16 | m(2) << 32 | m(3) << 48) & self.valid
+    }
+}
+
+/// `Folded` without SIMD: the same masks, a byte at a time.
+#[cfg(not(any(target_arch = "aarch64", target_arch = "x86_64")))]
 struct Folded {
     b: [u8; 64],
     valid: u64,
 }
 
-#[cfg(not(target_arch = "aarch64"))]
+#[cfg(not(any(target_arch = "aarch64", target_arch = "x86_64")))]
 impl Folded {
     fn new(src: &[u8; 64], len: usize) -> Folded {
         Folded { b: src.map(fold), valid: u64::MAX.checked_shr(64 - len as u32).unwrap_or(0) }
@@ -1252,7 +1301,7 @@ impl Folded {
 /// bytes starting `src`: each query byte's places in the name as one
 /// 64-bit mask (`Folded`) stand in for memchr's scans, which cost several
 /// times more per name tried.
-#[cfg(target_arch = "aarch64")]
+#[cfg(any(target_arch = "aarch64", target_arch = "x86_64"))]
 fn fuzzy_masked(name: &[u8], src: &[u8; 64], q: &[u8], cap: i32) -> Option<i32> {
     let f = Folded::new(src, name.len());
     let mut masks = [0u64; 32];
@@ -4016,6 +4065,36 @@ fn rank_tweaks(flags: u8, kind: u8, mtime: u32, now: u32) -> i32 {
 
 #[cfg(test)]
 mod tests {
+
+    /// The SIMD masks (NEON, SSE2) say what folding byte by byte says, for
+    /// every byte value and name length.
+    #[test]
+    fn folded_masks_match_bytes() {
+        let mut seed = 0x9e37_79b9_7f4a_7c15u64;
+        let mut rnd = || {
+            seed ^= seed << 13;
+            seed ^= seed >> 7;
+            seed ^= seed << 17;
+            seed
+        };
+        for round in 0..4000 {
+            let mut src = [0u8; 64];
+            // Mostly letters and digits around the fold boundaries, some any byte.
+            for b in src.iter_mut() {
+                let r = rnd();
+                *b = if r % 4 == 0 { (r >> 8) as u8 } else { b"@AZ[`az{09/:aZqQ"[(r >> 16) as usize % 16] };
+            }
+            let len = round % 65;
+            let f = Folded::new(&src, len);
+            let valid = u64::MAX.checked_shr(64 - len as u32).unwrap_or(0);
+            let want = |p: &dyn Fn(u8) -> bool| src.iter().enumerate().fold(0u64, |m, (i, &b)| m | (p(fold(b)) as u64) << i) & valid;
+            assert_eq!(f.digits(), want(&|b| b.is_ascii_digit()), "digits {src:?} {len}");
+            for c in [b'a', b'z', b'q', b'0', b'9', b'@', b'[', b'{', 0, 0xff, src[(rnd() % 64) as usize]] {
+                let c = fold(c);
+                assert_eq!(f.places(c), want(&|b| b == c), "places {c} {src:?} {len}");
+            }
+        }
+    }
     use super::*;
     use crate::walk::{Listing, NONE, RawEnt};
 
