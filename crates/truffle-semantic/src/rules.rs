@@ -516,10 +516,12 @@ mod tests {
 
     #[test]
     fn kinds_by_extension_and_name() {
+        // HEIC needs the system decoder (macOS ImageIO); Linux has no pure-Rust one.
         assert_eq!(
             kind("/p/IMG_1.HEIC"),
-            Classification::Index(FileKind::Image)
+            if cfg!(target_os = "macos") { Classification::Index(FileKind::Image) } else { Classification::Ignore }
         );
+        assert_eq!(kind("/p/IMG_2.jpg"), Classification::Index(FileKind::Image));
         assert_eq!(
             kind("/p/Screenshot (12).png"),
             Classification::Index(FileKind::Screenshot)
