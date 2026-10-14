@@ -66,9 +66,7 @@ fn build(home: &str, dir: &Path) {
     // (one batch at a time).
     let pool = rayon::ThreadPoolBuilder::new()
         .num_threads(8)
-        .start_handler(|_| unsafe {
-            libc::pthread_set_qos_class_self_np(libc::qos_class_t::QOS_CLASS_USER_INITIATED, 0);
-        })
+        .start_handler(|_| fsearch::sys::set_qos(fsearch::sys::Qos::Initiated))
         .build()
         .unwrap();
     let t = Instant::now();
@@ -121,9 +119,7 @@ fn measure(home: &str, dir: &Path) {
     let live = Live::new(Index::build(scan_home(home.as_bytes()), 0, fsearch::query::now_secs(), home.as_bytes()));
     let pool = rayon::ThreadPoolBuilder::new()
         .num_threads(8)
-        .start_handler(|_| unsafe {
-            libc::pthread_set_qos_class_self_np(libc::qos_class_t::QOS_CLASS_USER_INITIATED, 0);
-        })
+        .start_handler(|_| fsearch::sys::set_qos(fsearch::sys::Qos::Initiated))
         .build()
         .unwrap();
     let t = Instant::now();

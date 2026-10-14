@@ -223,7 +223,7 @@ fn run(snap: &Path, corpus: &str, out: &str, kinds: &str) {
     let load = ms(t.elapsed());
     let pool = rayon::ThreadPoolBuilder::new()
         .start_handler(|_| {
-            unsafe { libc::pthread_set_qos_class_self_np(libc::qos_class_t::QOS_CLASS_USER_INTERACTIVE, 0) };
+            fsearch::sys::set_qos(fsearch::sys::Qos::Interactive);
             fsearch::alloc::keep_on_this_thread();
         })
         .build()

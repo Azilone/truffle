@@ -314,7 +314,16 @@ fn mb(b: u64) -> f64 {
     (b as f64 / 1048576.0 * 10.0).round() / 10.0
 }
 
+/// (resident now, peak) of this process, from /proc on Linux.
+#[cfg(target_os = "linux")]
+fn footprint() -> (u64, u64) {
+    let status = std::fs::read_to_string("/proc/self/status").unwrap_or_default();
+    let kb = |key: &str| status.lines().find(|l| l.starts_with(key)).and_then(|l| l.split_whitespace().nth(1)?.parse::<u64>().ok()).unwrap_or(0) * 1024;
+    (kb("VmRSS:"), kb("VmHWM:"))
+}
+
 /// (phys_footprint, lifetime max) of this process.
+#[cfg(target_os = "macos")]
 fn footprint() -> (u64, u64) {
     let mut ri: libc::rusage_info_v4 = unsafe { std::mem::zeroed() };
     unsafe { libc::proc_pid_rusage(libc::getpid(), libc::RUSAGE_INFO_V4, (&raw mut ri).cast()) };

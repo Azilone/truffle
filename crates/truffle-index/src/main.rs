@@ -36,15 +36,11 @@ fn data_dir() -> PathBuf {
     d
 }
 
-unsafe extern "C" {
-    fn setiopolicy_np(iotype: i32, scope: i32, policy: i32) -> i32;
-}
-
 fn main() {
     // Never let a search download iCloud placeholders: opening or listing a
     // dataless file/dir fails fast instead of materializing it.
     // (IOPOL_TYPE_VFS_MATERIALIZE_DATALESS_FILES, IOPOL_SCOPE_PROCESS, OFF)
-    unsafe { setiopolicy_np(3, 0, 1) };
+    fsearch::sys::no_materialize_process();
     let args: Vec<String> = std::env::args().skip(1).collect();
     match args.first().map(String::as_str) {
         None | Some("-h" | "--help") => eprintln!("{USAGE}"),
@@ -144,7 +140,7 @@ fn bench(qs: &str) {
     let content = grep.as_ref().map(|_| fsearch::content::Content::open_shared(dir.join("content")));
     let pool = rayon::ThreadPoolBuilder::new()
         .start_handler(|_| {
-            unsafe { libc::pthread_set_qos_class_self_np(libc::qos_class_t::QOS_CLASS_USER_INTERACTIVE, 0) };
+            fsearch::sys::set_qos(fsearch::sys::Qos::Interactive);
             fsearch::alloc::keep_on_this_thread();
         })
         .build()

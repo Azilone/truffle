@@ -587,6 +587,7 @@ mod tests {
 
     /// A recursive event on a mount point (/dev here) doesn't crawl the
     /// mounted volume: it is an entry flagged as a scan flags it.
+    #[cfg(target_os = "macos")]
     #[test]
     fn mount_point_not_crawled() {
         let live = Live::new(Index::build(vec![Listing::default()], 0, 0, b""));

@@ -6,7 +6,12 @@
 pub mod alloc;
 pub mod content;
 mod engine;
+#[cfg(target_os = "macos")]
 mod fsevents;
+#[cfg(target_os = "linux")]
+#[path = "inotify.rs"]
+mod fsevents;
+pub mod sys;
 pub mod index;
 pub mod live;
 pub mod query;

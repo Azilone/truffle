@@ -1,4 +1,5 @@
-//! Parallel whole-disk enumeration with getattrlistbulk(2).
+//! Parallel whole-disk enumeration: getattrlistbulk(2) on macOS, readdir +
+//! fstatat on Linux (see `linux` at the end).
 //!
 //! One syscall returns hundreds of entries with name, type, size, mtime and
 //! flags already attached, so there is no per-file stat. Directories fan out
@@ -62,8 +63,11 @@ pub fn blocked(path: &[u8]) -> bool {
     SKIP.get().is_some_and(|v| v.iter().any(|s| path.starts_with(s) && (path.len() == s.len() || path[s.len()] == b'/')))
 }
 
+#[cfg(target_os = "macos")]
 const ATTR_CMN_ERROR: u32 = 0x2000_0000;
+#[cfg(target_os = "macos")]
 const DIR_MNTSTATUS_TRIGGER: u32 = 0x2;
+#[cfg(target_os = "macos")]
 const SF_FIRMLINK: u32 = 0x0080_0000;
 
 pub const KIND_FILE: u8 = 0;
@@ -182,9 +186,9 @@ pub fn list_one(path: &[u8]) -> Option<Listing> {
 
 // O_NOFOLLOW only checks the last component of a full path; O_NOFOLLOW_ANY
 // refuses a link anywhere in it. It needs macOS 11, so Apple Silicon only.
-#[cfg(target_arch = "aarch64")]
+#[cfg(all(target_os = "macos", target_arch = "aarch64"))]
 pub(crate) const NOFOLLOW: i32 = libc::O_NOFOLLOW_ANY;
-#[cfg(not(target_arch = "aarch64"))]
+#[cfg(not(all(target_os = "macos", target_arch = "aarch64")))]
 pub(crate) const NOFOLLOW: i32 = libc::O_NOFOLLOW;
 
 const OPEN_DIR: i32 = libc::O_RDONLY | libc::O_DIRECTORY | NOFOLLOW | libc::O_CLOEXEC;
@@ -260,6 +264,7 @@ fn descend<'s>(s: &Scope<'s>, fd: i32, path: Option<Vec<u8>>, mut l: Listing, ct
     }
 }
 
+#[cfg(target_os = "macos")]
 /// Entries in the directory `name` (in `dir`) resolves to.
 fn entry_count(dir: i32, name: &CString) -> Option<u32> {
     let mut al: libc::attrlist = unsafe { std::mem::zeroed() };
@@ -270,6 +275,7 @@ fn entry_count(dir: i32, name: &CString) -> Option<u32> {
     (r == 0).then_some(b[1])
 }
 
+#[cfg(target_os = "macos")]
 /// Is the folder at `path` a mount point, as a listing of its parent flags
 /// one (FLAG_MOUNT)?
 pub fn is_mount(path: &[u8]) -> bool {
@@ -290,10 +296,12 @@ fn push(l: Listing, ctx: &Ctx) {
     ctx.out[slot].lock().unwrap().push(l);
 }
 
+#[cfg(target_os = "macos")]
 fn rd32(b: &[u8], at: usize) -> u32 {
     u32::from_ne_bytes(b[at..at + 4].try_into().unwrap())
 }
 
+#[cfg(target_os = "macos")]
 fn rd64(b: &[u8], at: usize) -> u64 {
     u64::from_ne_bytes(b[at..at + 8].try_into().unwrap())
 }
@@ -310,6 +318,7 @@ fn list_into(path: &[u8], l: &mut Listing) -> bool {
     true
 }
 
+#[cfg(target_os = "macos")]
 fn list_fd(fd: i32, l: &mut Listing) {
     let mut al: libc::attrlist = unsafe { std::mem::zeroed() };
     al.bitmapcount = libc::ATTR_BIT_MAP_COUNT;
@@ -346,6 +355,7 @@ fn list_fd(fd: i32, l: &mut Listing) {
     });
 }
 
+#[cfg(target_os = "macos")]
 fn parse_entry(b: &[u8], l: &mut Listing) {
     let common = rd32(b, 4);
     let dirattr = rd32(b, 12);
@@ -406,4 +416,154 @@ fn parse_entry(b: &[u8], l: &mut Listing) {
     }
     l.ents.push(RawEnt { name_off: l.names.len() as u32, name_len: name.len() as u16, kind, size, mtime, child: NONE });
     l.names.extend_from_slice(name);
+}
+
+#[cfg(target_os = "linux")]
+pub use linux::is_mount;
+#[cfg(target_os = "linux")]
+use linux::{entry_count, list_fd};
+
+/// Linux: readdir + fstatat relative to the directory's fd. A directory on
+/// another device is crossed only if it holds a disk filesystem (ext4, btrfs,
+/// ...) or is a btrfs subvolume; /proc, /sys, tmpfs and network mounts get
+/// FLAG_MOUNT and are left alone.
+#[cfg(target_os = "linux")]
+mod linux {
+    use super::*;
+    use std::collections::HashSet;
+    use std::ffi::CStr;
+
+    const DISK_FS: &[&str] = &[
+        "ext2", "ext3", "ext4", "btrfs", "xfs", "zfs", "f2fs", "bcachefs", "jfs", "reiserfs", "nilfs2", "vfat", "exfat", "ntfs", "ntfs3",
+        "fuseblk", "hfsplus", "apfs", "overlay", "virtiofs",
+    ];
+    const BTRFS_SUPER_MAGIC: i64 = 0x9123_683e;
+
+    /// Devices of the mounted disk filesystems.
+    fn disk_devs() -> &'static HashSet<u64> {
+        static DEVS: std::sync::OnceLock<HashSet<u64>> = std::sync::OnceLock::new();
+        DEVS.get_or_init(|| {
+            let mounts = std::fs::read_to_string("/proc/self/mounts").unwrap_or_default();
+            mounts
+                .lines()
+                .filter_map(|l| {
+                    let mut f = l.split(' ');
+                    let (_, at, fs) = (f.next()?, f.next()?, f.next()?);
+                    DISK_FS.contains(&fs).then(|| unescape(at))
+                })
+                .filter_map(|at| std::fs::symlink_metadata(at).ok())
+                .map(|m| std::os::unix::fs::MetadataExt::dev(&m))
+                .collect()
+        })
+    }
+
+    /// /proc/self/mounts writes space, tab, newline and backslash as \ooo.
+    fn unescape(s: &str) -> String {
+        let b = s.as_bytes();
+        let (mut out, mut i) = (Vec::with_capacity(b.len()), 0);
+        while i < b.len() {
+            if b[i] == b'\\' && i + 4 <= b.len() && b[i + 1..i + 4].iter().all(u8::is_ascii_digit) {
+                out.push(u8::from_str_radix(&s[i + 1..i + 4], 8).unwrap_or(b'?'));
+                i += 4;
+            } else {
+                out.push(b[i]);
+                i += 1;
+            }
+        }
+        String::from_utf8_lossy(&out).into_owned()
+    }
+
+    /// Should a directory on device `dev` (inside one on `parent`) be left out?
+    fn foreign(dir: i32, name: &CStr, dev: u64, parent: u64) -> bool {
+        if dev == parent || disk_devs().contains(&dev) {
+            return false;
+        }
+        // btrfs gives each subvolume its own device without a mount.
+        let fd = unsafe { libc::openat(dir, name.as_ptr(), OPEN_DIR) };
+        if fd < 0 {
+            return true;
+        }
+        let mut sf: libc::statfs = unsafe { std::mem::zeroed() };
+        let ok = unsafe { libc::fstatfs(fd, &mut sf) } == 0;
+        unsafe { libc::close(fd) };
+        !(ok && sf.f_type as i64 == BTRFS_SUPER_MAGIC)
+    }
+
+    pub(super) fn entry_count(_dir: i32, _name: &std::ffi::CString) -> Option<u32> {
+        None
+    }
+
+    pub fn is_mount(path: &[u8]) -> bool {
+        use std::os::unix::ffi::OsStrExt;
+        use std::os::unix::fs::MetadataExt;
+        let p = std::path::Path::new(std::ffi::OsStr::from_bytes(path));
+        let (Ok(m), Some(parent)) = (std::fs::symlink_metadata(p), p.parent()) else { return false };
+        let Ok(pm) = std::fs::symlink_metadata(parent) else { return false };
+        if !m.is_dir() || m.dev() == pm.dev() || disk_devs().contains(&m.dev()) {
+            return false;
+        }
+        let Ok(c) = CString::new(path) else { return false };
+        let fd = unsafe { libc::open(c.as_ptr(), OPEN_DIR) };
+        if fd < 0 {
+            return true;
+        }
+        let mut sf: libc::statfs = unsafe { std::mem::zeroed() };
+        let ok = unsafe { libc::fstatfs(fd, &mut sf) } == 0;
+        unsafe { libc::close(fd) };
+        !(ok && sf.f_type as i64 == BTRFS_SUPER_MAGIC)
+    }
+
+    pub(super) fn list_fd(fd: i32, l: &mut Listing) {
+        let mut parent: libc::stat = unsafe { std::mem::zeroed() };
+        if unsafe { libc::fstat(fd, &mut parent) } != 0 {
+            return;
+        }
+        // fdopendir takes ownership of its fd: give it a duplicate (the
+        // caller keeps `fd` for openat). They share an offset, so rewind.
+        let dup = unsafe { libc::fcntl(fd, libc::F_DUPFD_CLOEXEC, 0) };
+        if dup < 0 {
+            return;
+        }
+        let dir = unsafe { libc::fdopendir(dup) };
+        if dir.is_null() {
+            unsafe { libc::close(dup) };
+            return;
+        }
+        unsafe { libc::rewinddir(dir) };
+        loop {
+            let e = unsafe { libc::readdir64(dir) };
+            if e.is_null() {
+                break;
+            }
+            let cname = unsafe { CStr::from_ptr((*e).d_name.as_ptr()) };
+            let name = cname.to_bytes();
+            if name == b"." || name == b".." || name.is_empty() || name.len() > u16::MAX as usize {
+                continue;
+            }
+            let mut st: libc::stat = unsafe { std::mem::zeroed() };
+            let (kind, size, mtime);
+            if unsafe { libc::fstatat(fd, cname.as_ptr(), &mut st, libc::AT_SYMLINK_NOFOLLOW) } == 0 {
+                let k = match st.st_mode & libc::S_IFMT {
+                    libc::S_IFREG => KIND_FILE,
+                    libc::S_IFDIR => KIND_DIR,
+                    libc::S_IFLNK => KIND_LINK,
+                    _ => KIND_OTHER,
+                };
+                size = if k == KIND_FILE { st.st_size.max(0) as u64 } else { 0 };
+                mtime = st.st_mtime.clamp(0, u32::MAX as i64) as u32;
+                kind = if k == KIND_DIR && foreign(fd, cname, st.st_dev, parent.st_dev) { k | FLAG_MOUNT } else { k };
+            } else {
+                (size, mtime) = (0, 0);
+                kind = match unsafe { (*e).d_type } {
+                    libc::DT_REG => KIND_FILE,
+                    libc::DT_DIR => KIND_DIR,
+                    libc::DT_LNK => KIND_LINK,
+                    _ => KIND_OTHER,
+                };
+            }
+            l.ents.push(RawEnt { name_off: l.names.len() as u32, name_len: name.len() as u16, kind, size, mtime, child: NONE });
+            l.names.extend_from_slice(name);
+        }
+        unsafe { libc::closedir(dir) };
+    }
 }

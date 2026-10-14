@@ -3129,7 +3129,7 @@ fn helpers() -> &'static Helpers {
             let spawned = std::thread::Builder::new().name(format!("fsearch-help-{i}")).spawn(move || {
                 // Someone is waiting: keep off the slow cores and out of the
                 // throttled IO tiers, and never download iCloud placeholders.
-                unsafe { libc::pthread_set_qos_class_self_np(libc::qos_class_t::QOS_CLASS_USER_INITIATED, 0) };
+                crate::sys::set_qos(crate::sys::Qos::Initiated);
                 crate::no_materialize();
                 let mut seen = 0;
                 loop {
@@ -3499,18 +3499,7 @@ const OPENING: usize = 4;
 fn readers_more() -> usize {
     static N: std::sync::OnceLock<usize> = std::sync::OnceLock::new();
     *N.get_or_init(|| {
-        let get = |name: &str| {
-            let name = std::ffi::CString::new(name).ok()?;
-            let (mut v, mut len) = (0i32, std::mem::size_of::<i32>());
-            let ok = unsafe { libc::sysctlbyname(name.as_ptr(), (&raw mut v).cast(), &mut len, std::ptr::null_mut(), 0) } == 0;
-            (ok && v > 0).then_some(v as usize)
-        };
-        // The levels run fastest first; the last one is the efficiency cores.
-        let fast = match get("hw.nperflevels") {
-            Some(n) if n > 1 => (0..n - 1).filter_map(|i| get(&format!("hw.perflevel{i}.physicalcpu"))).sum(),
-            _ => get("hw.physicalcpu").unwrap_or(READERS),
-        };
-        fast.clamp(READERS, READERS_MORE)
+        crate::sys::fast_cores().unwrap_or(READERS).clamp(READERS, READERS_MORE)
     })
 }
 /// Index searches reading candidates now (see READERS).
@@ -3534,18 +3523,7 @@ const SCAN_RUN: usize = 64;
 /// Run `f` with this thread never downloading iCloud placeholders (as the
 /// helper threads), then restore its policy.
 fn without_materializing<T>(f: impl FnOnce() -> T) -> T {
-    unsafe extern "C" {
-        fn getiopolicy_np(iotype: i32, scope: i32) -> i32;
-        fn setiopolicy_np(iotype: i32, scope: i32, policy: i32) -> i32;
-    }
-    // IOPOL_TYPE_VFS_MATERIALIZE_DATALESS_FILES, IOPOL_SCOPE_THREAD
-    let prior = unsafe { getiopolicy_np(3, 1) };
-    crate::no_materialize();
-    let r = f();
-    if prior >= 0 {
-        unsafe { setiopolicy_np(3, 1, prior) };
-    }
-    r
+    crate::sys::without_materializing(f)
 }
 
 pub struct FileMatches {
@@ -4733,8 +4711,7 @@ fn open_ahead(path: &[u8]) -> Option<std::fs::File> {
 fn open_ahead_sized(path: &[u8]) -> Option<(std::fs::File, u64)> {
     use std::os::unix::io::AsRawFd;
     let (f, len) = open_sized(path)?;
-    let ra = libc::radvisory { ra_offset: 0, ra_count: len.min(MAX_REPO_FILE + 1) as libc::c_int };
-    unsafe { libc::fcntl(f.as_raw_fd(), libc::F_RDADVISE, &ra) };
+    crate::sys::read_ahead(f.as_raw_fd(), len.min(MAX_REPO_FILE + 1));
     Some((f, len))
 }
 
