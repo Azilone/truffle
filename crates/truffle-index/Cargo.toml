@@ -8,10 +8,6 @@ license.workspace = true
 [lib]
 name = "truffle_index"
 
-[[bin]]
-name = "truffle"
-path = "src/main.rs"
-
 [dependencies]
 libc = "0.2"
 rayon = "1.12"

@@ -1,6 +1,7 @@
 mod frecency;
 mod git;
 mod mcp;
+mod meaning;
 mod server;
 
 use truffle_index::{index, live, query};
@@ -23,7 +24,9 @@ const USAGE: &str = "usage:
                                 (a LaunchAgent on macOS, which needs Full Disk Access granted
                                 to ~/.local/bin/truffle; a systemd user service on Linux)
   truffle uninstall             remove the login service (keeps the index)
-  truffle bench <query...>      time a query in-process against the saved index";
+  truffle bench <query...>      time a query in-process against the saved index
+  truffle model download        fetch EmbeddingGemma 2 (865 MB, once) for searching by meaning
+  truffle meaning <command>     the meaning index: index, search, status, estimate… (truffle meaning help)";
 
 fn home() -> String {
     std::env::var("HOME").unwrap_or_else(|_| "/".into())
@@ -52,6 +55,10 @@ fn main() {
         Some("status") => print_one(&serde_json::json!({"op": "status"}), true),
         Some("bench") => bench(&args[1..].join(" ")),
         Some("install") => install(args.iter().any(|a| a == "--login")),
+        Some("meaning") => exit_with(meaning::run(args[1..].to_vec())),
+        Some("model") if args.get(1).map(String::as_str) == Some("download") => {
+            exit_with(meaning::run([vec!["download-model".to_string()], args[2..].to_vec()].concat()))
+        }
         Some("uninstall") => uninstall(),
         Some(_) => {
             let json = args.iter().any(|a| a == "--json");
@@ -326,6 +333,13 @@ mod service {
         systemctl(&["disable", "--now", "truffle.service"]);
         let _ = std::fs::remove_file(unit_path());
         systemctl(&["daemon-reload"]);
+    }
+}
+
+/// Leave with a meaning command's status.
+fn exit_with(code: std::process::ExitCode) {
+    if code != std::process::ExitCode::SUCCESS {
+        std::process::exit(1);
     }
 }
 

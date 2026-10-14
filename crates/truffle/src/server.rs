@@ -39,9 +39,13 @@ pub fn serve(dir: PathBuf, home: String) {
             return;
         }
     };
-    let g = git.clone();
-    engine.on_change(move |dirs| g.changed(dirs));
-    let cx = Arc::new(Ctx { engine, git, frecency: Frecency::load(dir.join("frecency")) });
+    let meaning = crate::meaning::daemon::Meaning::start();
+    let (g, m) = (git.clone(), meaning.clone());
+    engine.on_change(move |dirs| {
+        g.changed(dirs);
+        m.changed(dirs);
+    });
+    let cx = Arc::new(Ctx { engine, git, frecency: Frecency::load(dir.join("frecency")), meaning });
     let sock = socket_path(&dir);
     let _ = std::fs::remove_file(&sock);
     let listener = match UnixListener::bind(&sock) {
@@ -63,6 +67,8 @@ struct Ctx {
     engine: Engine,
     git: Arc<Git>,
     frecency: Arc<Frecency>,
+    /// Searches by meaning ("meaning.*" ops) and the indexer that keeps that index current.
+    meaning: Arc<crate::meaning::daemon::Meaning>,
 }
 
 fn try_lock(f: &std::fs::File) -> bool {
@@ -135,6 +141,12 @@ fn respond(line: &str, cx: &Ctx, out: &mut Vec<u8>) {
         Err(e) => return put(out, &json!({"ok": false, "error": format!("bad json: {e}")})),
     };
     let id = v.get("id").unwrap_or(&Value::Null);
+    // The meaning index answers "meaning.search", "meaning.render", … (search-service's requests, prefixed).
+    if let Some(op) = v.get("op").and_then(Value::as_str).and_then(|op| op.strip_prefix("meaning.")) {
+        let mut reply = cx.meaning.handle(op, &v);
+        reply["id"] = id.clone();
+        return put(out, &reply);
+    }
     match run(&v, cx) {
         Ok(Reply::Hits(found, took_us, next, annotate)) => {
             let hits = found
