@@ -1,0 +1,16 @@
+[package]
+name = "truffle-semantic"
+version = "0.1.0"
+description = "Truffle's meaning index: files, segments and vectors in SQLite (FTS5), hybrid search. No OS-specific code. Started from trovara-core."
+edition.workspace = true
+license.workspace = true
+
+[dependencies]
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+rusqlite = { version = "0.40", features = ["bundled"] }
+unicode-normalization = "0.1"
+unicode-general-category = "1"
+half = "2"
+rayon = "1"
+regex = "1"
