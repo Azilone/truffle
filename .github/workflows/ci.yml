@@ -20,4 +20,4 @@ jobs:
       - name: Raycast extension
         if: runner.os == 'macOS'
         working-directory: raycast
-        run: npm ci && npx tsc --noEmit && node --test --experimental-strip-types src/query.test.ts
+        run: npm ci && npx ray build -e dist && node --test --experimental-strip-types src/query.test.ts
