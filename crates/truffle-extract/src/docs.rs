@@ -201,13 +201,15 @@ pub fn rtf(rtf: &str) -> String {
     let mut unicode_skip = 1; // \ucN: characters after \uN to skip
     let mut pending_skip = 0;
     let mut code_page_bytes: Vec<u8> = Vec::new(); // \'hh bytes waiting to be decoded together (multi-byte code pages)
-    let flush = |bytes: &mut Vec<u8>, out: &mut String| {
+    // \'hh bytes are in the current font's charset (\fcharset178 is Arabic whatever \ansicpg says), else the
+    // document's \ansicpg. Fonts change with \fN and come back when a group closes.
+    let fonts = rtf_font_encodings(rtf);
+    let default = rtf_ansicpg(rtf).unwrap_or(encoding_rs::WINDOWS_1252);
+    let mut encoding = default;
+    let mut stack: Vec<&'static encoding_rs::Encoding> = Vec::new();
+    let flush = |bytes: &mut Vec<u8>, out: &mut String, encoding: &'static encoding_rs::Encoding| {
         if !bytes.is_empty() {
-            out.push_str(
-                &encoding_rs::WINDOWS_1252
-                    .decode_without_bom_handling(bytes)
-                    .0,
-            );
+            out.push_str(&encoding.decode_without_bom_handling(bytes).0);
             bytes.clear();
         }
     };
@@ -224,7 +226,7 @@ pub fn rtf(rtf: &str) -> String {
             continue;
         }
         if !(c == '\\' && chars.get(i + 1) == Some(&'\'')) {
-            flush(&mut code_page_bytes, &mut out);
+            flush(&mut code_page_bytes, &mut out, encoding);
         }
         match c {
             '{' => {
@@ -248,9 +250,13 @@ pub fn rtf(rtf: &str) -> String {
                         continue;
                     }
                 }
+                stack.push(encoding);
                 i += 1;
             }
-            '}' => i += 1,
+            '}' => {
+                encoding = stack.pop().unwrap_or(default);
+                i += 1;
+            }
             '\\' => {
                 i += 1;
                 let Some(&next) = chars.get(i) else { break };
@@ -300,6 +306,9 @@ pub fn rtf(rtf: &str) -> String {
                         "rdblquote" => out.push('”'),
                         "bullet" => out.push('•'),
                         "uc" => unicode_skip = number.parse().unwrap_or(1),
+                        "f" => {
+                            encoding = number.parse::<u32>().ok().and_then(|n| fonts.get(&n).copied()).unwrap_or(default);
+                        }
                         "u" => {
                             if let Ok(value) = number.parse::<i32>() {
                                 let value = if value < 0 { value + 65536 } else { value } as u32;
@@ -333,8 +342,74 @@ pub fn rtf(rtf: &str) -> String {
             }
         }
     }
-    flush(&mut code_page_bytes, &mut out);
+    flush(&mut code_page_bytes, &mut out, encoding);
     out
+}
+
+/// \ansicpgN: the document's code page.
+fn rtf_ansicpg(rtf: &str) -> Option<&'static encoding_rs::Encoding> {
+    let at = rtf.find("\\ansicpg")? + "\\ansicpg".len();
+    let digits: String = rtf[at..].chars().take_while(char::is_ascii_digit).collect();
+    code_page(digits.parse().ok()?)
+}
+
+/// The font table's \fN … \fcharsetM, as each font's encoding.
+fn rtf_font_encodings(rtf: &str) -> std::collections::HashMap<u32, &'static encoding_rs::Encoding> {
+    static FONT: std::sync::LazyLock<Regex> = std::sync::LazyLock::new(|| Regex::new(r"\\f(\d+)[^;{}]*?\\fcharset(\d+)").unwrap());
+    let Some(start) = rtf.find("{\\fonttbl") else { return Default::default() };
+    // The table ends where its group closes.
+    let mut depth = 0;
+    let mut end = rtf.len();
+    for (k, c) in rtf[start..].char_indices() {
+        match c {
+            '{' => depth += 1,
+            '}' => {
+                depth -= 1;
+                if depth == 0 {
+                    end = start + k;
+                    break;
+                }
+            }
+            _ => {}
+        }
+    }
+    FONT.captures_iter(&rtf[start..end])
+        .filter_map(|c| Some((c[1].parse().ok()?, charset(c[2].parse().ok()?)?)))
+        .collect()
+}
+
+/// RTF's \fcharset numbers (Windows' charset ids).
+fn charset(n: u32) -> Option<&'static encoding_rs::Encoding> {
+    code_page(match n {
+        77 => 10000,
+        128 => 932,
+        129 => 949,
+        134 => 936,
+        136 => 950,
+        161 => 1253,
+        162 => 1254,
+        163 => 1258,
+        177 => 1255,
+        178 => 1256,
+        186 => 1257,
+        204 => 1251,
+        222 => 874,
+        238 => 1250,
+        _ => return None, // ANSI, default, symbol: the document's code page
+    })
+}
+
+fn code_page(n: u32) -> Option<&'static encoding_rs::Encoding> {
+    let label = match n {
+        874 | 1250..=1258 => format!("windows-{n}"),
+        932 => "shift_jis".into(),
+        936 => "gbk".into(),
+        949 => "euc-kr".into(),
+        950 => "big5".into(),
+        10000 => "macintosh".into(),
+        _ => return None,
+    };
+    encoding_rs::Encoding::for_label(label.as_bytes())
 }
 
 /// Word 97–2003: the text is in the WordDocument stream, in pieces the piece table (in the Clx, in the 0Table or
@@ -473,6 +548,9 @@ mod tests {
             r"\par}"
         );
         assert_eq!(rtf(source), "Café menu\nLine two\tend€\n");
+        // Arabic in an Arabic font (\fcharset178) of a Windows-1252 document, as macOS's TextEdit writes it.
+        let arabic = r"{\rtf1\ansi\ansicpg1252{\fonttbl\f0\fnil\fcharset178 GeezaPro;\f1\fswiss Helvetica;}\f0 \'e3\'cd\'d6\'d1 {\f1 caf\'e9}\'e3}";
+        assert_eq!(rtf(arabic), "محضر caféم");
     }
 
     #[test]

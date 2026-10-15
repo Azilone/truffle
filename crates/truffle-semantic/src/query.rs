@@ -225,6 +225,15 @@ pub fn is_lookup(terms: &[String]) -> bool {
 
 #[cfg(test)]
 mod tests {
+
+    #[test]
+    fn codes_as_typed_are_lookups() {
+        let typed = |q: &str| q.split_whitespace().map(str::to_string).collect::<Vec<_>>();
+        assert!(is_lookup(&typed("M-417")));
+        assert!(is_lookup(&typed("INV-2024-0042")));
+        assert!(!is_lookup(&typed("a penguin")));
+        assert!(!is_lookup(&typed("page 12 of the lease")));
+    }
     use super::*;
 
     #[test]

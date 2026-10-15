@@ -37,6 +37,7 @@ Documents and Downloads alone rather than wait on a consent prompt.
 | Daemon memory | 49 MB idle; 131 MB footprint with the model loaded, released after 5 idle minutes |
 | Disk | 33 MB binary; indexes 42 MB (names) + 17 MB (contents) + 14 MB (meaning); model 865 MB |
 | Vectors vs DigUp's reference | cosine 1.00000 (Metal), ≥ 0.9997 (Linux CPU) |
+| Ranking on DigUp's evals (R@1 / MRR) | synthetic 0.95 / 0.97, multilingual 0.85 / 0.90, code 1.00 / 1.00: DigUp's own scores |
 
 ## How it works
 

@@ -342,7 +342,9 @@ impl Searcher {
         // A file qualifies by standing out in meaning, or by containing at least half of the query's words.
         // Score: meaning z + a bonus that grows with word coverage, + 1 for the kind the query asks for. One common
         // word can't beat a strong meaning match; all the words of an exact lookup usually do.
-        let lookup = is_lookup(&terms) || identifier.is_some();
+        // As typed too: "M-417" splits into "m" and "417", neither a lookup alone.
+        let typed: Vec<String> = text.split_whitespace().map(str::to_string).collect();
+        let lookup = is_lookup(&terms) || is_lookup(&typed) || identifier.is_some();
         let (meaning_weight, words_weight) = if lookup {
             (0.5, word_weight * 2.0)
         } else {
@@ -386,9 +388,11 @@ impl Searcher {
         for (file, score) in scored.into_iter().take(options.limit) {
             let semantic = best.get(&file).copied();
             let keyword = word_rank.get(&file);
-            // Point at the best meaning segment if it stands out; else at the segment the words matched.
-            let use_meaning =
-                semantic.is_some_and(|(z, _, _)| z >= options.z_gate || keyword.is_none());
+            // Point at the best meaning segment if it stands out; else at the segment the words matched. An exact
+            // lookup (a code, an ID, a name) points at its words wherever they matched: they're why the file is here,
+            // and a page that merely resembles the query would hide them (DigUp's eval: "M-417" on page 88 of 120).
+            let use_meaning = semantic
+                .is_some_and(|(z, _, _)| (z >= options.z_gate && !(lookup && keyword.is_some())) || keyword.is_none());
             let segment_id = if use_meaning {
                 semantic.map(|(_, _, row)| self.row_segment[row])
             } else {
