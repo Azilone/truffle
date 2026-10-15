@@ -11,14 +11,27 @@ test("a description leads with meaning", () => {
 });
 
 test("fsearch filters and operators keep DigUp out", () => {
-  for (const q of ["ext:rs grep:apply_dir", "readme in:~/Developer", "'exact", "^prefix", "src/**/*.rs", "!test/ init", "suffix$"]) {
+  for (const q of [
+    "ext:rs grep:apply_dir",
+    "readme in:~/Developer",
+    "'exact",
+    "^prefix",
+    "src/**/*.rs",
+    "!test/ init",
+    "suffix$",
+  ]) {
     assert.equal(plan(q).digup, null, q);
     assert.equal(plan(q).fsearch, q, q);
   }
 });
 
 test("code: searches DigUp's code index only", () => {
-  assert.deepEqual(plan("code: retry with backoff"), { fsearch: null, digup: "code: retry with backoff", code: true, lead: "digup" });
+  assert.deepEqual(plan("code: retry with backoff"), {
+    fsearch: null,
+    digup: "code: retry with backoff",
+    code: true,
+    lead: "digup",
+  });
   assert.equal(plan("code:").digup, null);
 });
 
@@ -27,14 +40,34 @@ test("an empty query asks nothing", () => {
 });
 
 const du = (path: string, extra: Partial<DigupHit> = {}): DigupHit => ({
-  path, kind: "pdf", segment: "page", segment_id: 1, score: 1, modified: 0, size: 0, info: {}, ...extra,
+  path,
+  kind: "pdf",
+  segment: "page",
+  segment_id: 1,
+  score: 1,
+  modified: 0,
+  size: 0,
+  info: {},
+  ...extra,
 });
 const fs = (path: string): FsearchHit => ({ path, kind: "file", mtime: 0, size: 0, score: 1 });
 
 test("each file shows once, DigUp's row kept for the moment it knows", () => {
-  const out = merge([du("/a.pdf", { loc: 3 }), du("/a.pdf", { loc: 9, segment_id: 2 }), du("/b.mov")], [fs("/a.pdf"), fs("/c.txt")]);
-  assert.deepEqual(out.digup.map((h) => [h.path, h.loc]), [["/a.pdf", 3], ["/b.mov", undefined]]);
-  assert.deepEqual(out.fsearch.map((h) => h.path), ["/c.txt"]);
+  const out = merge(
+    [du("/a.pdf", { loc: 3 }), du("/a.pdf", { loc: 9, segment_id: 2 }), du("/b.mov")],
+    [fs("/a.pdf"), fs("/c.txt")],
+  );
+  assert.deepEqual(
+    out.digup.map((h) => [h.path, h.loc]),
+    [
+      ["/a.pdf", 3],
+      ["/b.mov", undefined],
+    ],
+  );
+  assert.deepEqual(
+    out.fsearch.map((h) => h.path),
+    ["/c.txt"],
+  );
 });
 
 test("moments read like a player's clock", () => {

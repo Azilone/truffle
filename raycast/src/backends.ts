@@ -55,7 +55,8 @@ async function request(body: Record<string, unknown>, timeoutMs = 5000) {
 export type FsearchStatus = { ready: boolean; fullDiskAccess: boolean; entries: number; message?: string };
 
 export async function fsearchStatus(): Promise<FsearchStatus> {
-  if (!fs.existsSync(truffleBin)) return { ready: false, fullDiskAccess: false, entries: 0, message: "truffle isn't installed" };
+  if (!fs.existsSync(truffleBin))
+    return { ready: false, fullDiskAccess: false, entries: 0, message: "truffle isn't installed" };
   const reply = await request({ op: "status" });
   if (reply.ok !== true) return { ready: false, fullDiskAccess: false, entries: 0, message: String(reply.error ?? "") };
   return { ready: true, fullDiskAccess: reply.full_disk_access === true, entries: Number(reply.entries ?? 0) };
@@ -101,25 +102,46 @@ export async function restartFsearch(): Promise<void> {
 
 // Meaning.
 
-export type DigupStatus = { encoder: string; vectors: number; codeVectors: number; folders: string[]; message?: string };
+export type DigupStatus = {
+  encoder: string;
+  vectors: number;
+  codeVectors: number;
+  folders: string[];
+  message?: string;
+};
 
 export async function digupStatus(): Promise<DigupStatus> {
-  if (!fs.existsSync(truffleBin)) return { encoder: "unavailable", vectors: 0, codeVectors: 0, folders: [], message: "truffle isn't installed" };
+  if (!fs.existsSync(truffleBin))
+    return { encoder: "unavailable", vectors: 0, codeVectors: 0, folders: [], message: "truffle isn't installed" };
   const folders = await request({ op: "meaning.folders" });
   // Folders held for want of Full Disk Access are still chosen (and what's indexed in them still found).
-  const list = [...((folders.folders as string[] | undefined) ?? []), ...((folders.held as string[] | undefined) ?? [])];
+  const list = [
+    ...((folders.folders as string[] | undefined) ?? []),
+    ...((folders.held as string[] | undefined) ?? []),
+  ];
   if (list.length === 0) return { encoder: "stopped", vectors: 0, codeVectors: 0, folders: [] };
   const warm = await request({ op: "meaning.prewarm" }, 30_000);
-  if (warm.ok === false) return { encoder: "unavailable", vectors: 0, codeVectors: 0, folders: list, message: String(warm.error ?? "") };
+  if (warm.ok === false)
+    return { encoder: "unavailable", vectors: 0, codeVectors: 0, folders: list, message: String(warm.error ?? "") };
   encoderState = String(warm.encoder ?? encoderState);
   return { encoder: encoderState, vectors: Number(warm.vectors ?? 0), codeVectors: 0, folders: list };
 }
 
 export type DigupResult = { hits: DigupHit[]; strong: number; meaning: boolean; warning?: string };
 
-export async function digupSearch(q: string, opts: { code: boolean; meaning: boolean; limit?: number }): Promise<DigupResult> {
+export async function digupSearch(
+  q: string,
+  opts: { code: boolean; meaning: boolean; limit?: number },
+): Promise<DigupResult> {
   const reply = await request(
-    { op: "meaning.search", q, code: opts.code, meaning: opts.meaning, prefix_last: !opts.meaning, limit: opts.limit ?? 30 },
+    {
+      op: "meaning.search",
+      q,
+      code: opts.code,
+      meaning: opts.meaning,
+      prefix_last: !opts.meaning,
+      limit: opts.limit ?? 30,
+    },
     opts.meaning ? 30_000 : 5000,
   );
   if (reply.ok === false) throw new Error(String(reply.error ?? "meaning search failed"));
@@ -145,7 +167,11 @@ export function digupEmbedAhead(q: string, code: boolean): void {
 }
 
 /** A JPEG of a PDF page, a video frame or a picture, for the preview. */
-export async function digupRender(file: string, kind: "pdf" | "video" | "image", loc?: number): Promise<string | undefined> {
+export async function digupRender(
+  file: string,
+  kind: "pdf" | "video" | "image",
+  loc?: number,
+): Promise<string | undefined> {
   const reply = await request({ op: "meaning.render", path: file, kind, loc, pixels: 900 }, 20_000);
   return typeof reply.image === "string" ? reply.image : undefined;
 }

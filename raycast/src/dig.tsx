@@ -10,6 +10,7 @@ import {
   showToast,
   Toast,
   type Image,
+  Keyboard,
 } from "@raycast/api";
 import { usePromise } from "@raycast/utils";
 import path from "node:path";
@@ -105,14 +106,28 @@ export default function Command() {
   const isGrep = merged.fsearch.some((h) => h.lines);
 
   const meaningSection = strong.length > 0 && (
-    <List.Section key="meaning" title={p.code ? "Code" : "By meaning"} subtitle={digup.meaning ? `${strong.length}` : "exact words…"}>
+    <List.Section
+      key="meaning"
+      title={p.code ? "Code" : "By meaning"}
+      subtitle={digup.meaning ? `${strong.length}` : "exact words…"}
+    >
       {strong.map((hit) => (
-        <DigupItem key={`${hit.path}#${hit.segment_id}`} hit={hit} detail={detail} toggle={() => setDetail((d) => !d)} setText={setText} />
+        <DigupItem
+          key={`${hit.path}#${hit.segment_id}`}
+          hit={hit}
+          detail={detail}
+          toggle={() => setDetail((d) => !d)}
+          setText={setText}
+        />
       ))}
     </List.Section>
   );
   const filesSection = merged.fsearch.length > 0 && (
-    <List.Section key="files" title={text.trim() ? (isGrep ? "Contents" : "Files") : "Recent"} subtitle={`${merged.fsearch.length}`}>
+    <List.Section
+      key="files"
+      title={text.trim() ? (isGrep ? "Contents" : "Files") : "Recent"}
+      subtitle={`${merged.fsearch.length}`}
+    >
       {merged.fsearch.map((hit) => (
         <FsearchItem key={hit.path} hit={hit} detail={detail} toggle={() => setDetail((d) => !d)} setText={setText} />
       ))}
@@ -133,12 +148,28 @@ export default function Command() {
       {weaker.length > 0 && (
         <List.Section title="Weaker matches">
           {weaker.map((hit) => (
-            <DigupItem key={`${hit.path}#${hit.segment_id}`} hit={hit} detail={detail} toggle={() => setDetail((d) => !d)} setText={setText} />
+            <DigupItem
+              key={`${hit.path}#${hit.segment_id}`}
+              hit={hit}
+              detail={detail}
+              toggle={() => setDetail((d) => !d)}
+              setText={setText}
+            />
           ))}
         </List.Section>
       )}
-      <Setup fs={fsStatus.data} fsError={fsStatus.error} du={duStatus.data} duError={duStatus.error} revalidate={fsStatus.revalidate} />
-      <List.EmptyView icon={Icon.MagnifyingGlass} title={text.trim() ? "Nothing dug up" : "Dig"} description="Try fewer words, or describe what the file shows or says." />
+      <Setup
+        fs={fsStatus.data}
+        fsError={fsStatus.error}
+        du={duStatus.data}
+        duError={duStatus.error}
+        revalidate={fsStatus.revalidate}
+      />
+      <List.EmptyView
+        icon={Icon.MagnifyingGlass}
+        title={text.trim() ? "Nothing dug up" : "Dig"}
+        description="Try fewer words, or describe what the file shows or says."
+      />
     </List>
   );
 }
@@ -149,7 +180,8 @@ function DigupItem({ hit, detail, toggle, setText }: ItemProps & { hit: DigupHit
   const ext = path.extname(hit.path).slice(1).toLowerCase();
   const at = where(hit);
   const picture = hit.kind === "image" || hit.kind === "screenshot";
-  const icon: Image.ImageLike = picture && PICTURES.has(ext) ? { source: hit.path } : (KIND_ICON[hit.kind] ?? { fileIcon: hit.path });
+  const icon: Image.ImageLike =
+    picture && PICTURES.has(ext) ? { source: hit.path } : (KIND_ICON[hit.kind] ?? { fileIcon: hit.path });
   return (
     <List.Item
       title={path.basename(hit.path)}
@@ -158,7 +190,9 @@ function DigupItem({ hit, detail, toggle, setText }: ItemProps & { hit: DigupHit
       quickLook={{ path: hit.path }}
       accessories={
         detail
-          ? at ? [{ tag: at }] : []
+          ? at
+            ? [{ tag: at }]
+            : []
           : [
               ...(at ? [{ tag: { value: at, color: Color.Purple } }] : []),
               ...(hit.excerpt ? [{ icon: Icon.QuoteBlock, tooltip: hit.excerpt.slice(0, 300) }] : []),
@@ -193,20 +227,49 @@ function FsearchItem({ hit, detail, toggle, setText }: ItemProps & { hit: Fsearc
   );
 }
 
-function FileActions({ file, hit, toggle, setText }: { file: string; hit?: DigupHit; toggle: () => void; setText: (t: string) => void }) {
+function FileActions({
+  file,
+  hit,
+  toggle,
+  setText,
+}: {
+  file: string;
+  hit?: DigupHit;
+  toggle: () => void;
+  setText: (t: string) => void;
+}) {
   const at = hit ? where(hit) : undefined;
   return (
     <ActionPanel>
       <ActionPanel.Section>
-        <Action title={at && (hit?.kind === "video" || hit?.kind === "audio") ? `Open at ${at}` : "Open"} icon={Icon.ArrowRight} onAction={() => openFile(file, hit)} />
-        <Action title="Show in Finder" icon={Icon.Finder} shortcut={{ modifiers: ["cmd"], key: "return" }} onAction={() => showInFinder(file)} />
-        <Action.ToggleQuickLook shortcut={{ modifiers: ["cmd"], key: "y" }} />
-        <Action title="Toggle Preview" icon={Icon.Sidebar} shortcut={{ modifiers: ["cmd"], key: "d" }} onAction={toggle} />
-        <Action.OpenWith path={file} shortcut={{ modifiers: ["cmd", "shift"], key: "o" }} />
+        <Action
+          title={at && (hit?.kind === "video" || hit?.kind === "audio") ? `Open at ${at}` : "Open"}
+          icon={Icon.ArrowRight}
+          onAction={() => openFile(file, hit)}
+        />
+        <Action
+          title="Show in Finder"
+          icon={Icon.Finder}
+          shortcut={{ modifiers: ["cmd"], key: "return" }}
+          onAction={() => showInFinder(file)}
+        />
+        <Action.ToggleQuickLook shortcut={Keyboard.Shortcut.Common.ToggleQuickLook} />
+        <Action
+          title="Toggle Preview"
+          icon={Icon.Sidebar}
+          shortcut={{ modifiers: ["cmd"], key: "d" }}
+          onAction={toggle}
+        />
+        <Action.OpenWith path={file} shortcut={Keyboard.Shortcut.Common.OpenWith} />
       </ActionPanel.Section>
       <ActionPanel.Section>
-        <Action title="Copy File" icon={Icon.CopyClipboard} shortcut={{ modifiers: ["cmd", "shift"], key: "c" }} onAction={() => Clipboard.copy({ file })} />
-        <Action.CopyToClipboard title="Copy Path" content={file} shortcut={{ modifiers: ["cmd"], key: "." }} />
+        <Action
+          title="Copy File"
+          icon={Icon.CopyClipboard}
+          shortcut={Keyboard.Shortcut.Common.Copy}
+          onAction={() => Clipboard.copy({ file })}
+        />
+        <Action.CopyToClipboard title="Copy Path" content={file} shortcut={Keyboard.Shortcut.Common.Pin} />
         <Action
           title="Search in This Folder"
           icon={Icon.MagnifyingGlass}
@@ -249,7 +312,9 @@ function DigupDetail({ hit }: { hit: DigupHit }) {
           <List.Item.Detail.Metadata.Label title="Kind" text={hit.kind} />
           {at && <List.Item.Detail.Metadata.Label title="At" text={at} />}
           {hit.cosine !== undefined && <List.Item.Detail.Metadata.Label title="Meaning" text={hit.cosine.toFixed(3)} />}
-          {hit.keyword_rank !== undefined && <List.Item.Detail.Metadata.Label title="Exact words" text={`#${hit.keyword_rank}`} />}
+          {hit.keyword_rank !== undefined && (
+            <List.Item.Detail.Metadata.Label title="Exact words" text={`#${hit.keyword_rank}`} />
+          )}
           <List.Item.Detail.Metadata.Label title="Modified" text={new Date(hit.modified * 1000).toLocaleString()} />
           <List.Item.Detail.Metadata.Label title="Where" text={tilde(hit.path, home)} />
         </List.Item.Detail.Metadata>
@@ -272,7 +337,9 @@ function FsearchDetail({ hit }: { hit: FsearchHit }) {
         <List.Item.Detail.Metadata>
           <List.Item.Detail.Metadata.Label title="Kind" text={hit.kind} />
           {hit.size > 0 && <List.Item.Detail.Metadata.Label title="Size" text={`${(hit.size / 1024).toFixed(1)} KB`} />}
-          {hit.mtime > 0 && <List.Item.Detail.Metadata.Label title="Modified" text={new Date(hit.mtime * 1000).toLocaleString()} />}
+          {hit.mtime > 0 && (
+            <List.Item.Detail.Metadata.Label title="Modified" text={new Date(hit.mtime * 1000).toLocaleString()} />
+          )}
           <List.Item.Detail.Metadata.Label title="Where" text={tilde(hit.path, home)} />
         </List.Item.Detail.Metadata>
       }
@@ -298,7 +365,11 @@ function Setup(props: {
         title="Truffle isn't answering"
         subtitle={props.fs?.message ?? props.fsError?.message}
         accessories={[{ text: tilde(truffleBin, home) }]}
-        actions={<ActionPanel>{copy("Copy Install Command", "cargo install --path crates/truffle && truffle install --login")}</ActionPanel>}
+        actions={
+          <ActionPanel>
+            {copy("Copy Install Command", "cargo install --path crates/truffle && truffle install --login")}
+          </ActionPanel>
+        }
       />,
     );
   } else if (props.fs?.ready && !props.fs.fullDiskAccess) {
@@ -310,7 +381,11 @@ function Setup(props: {
         subtitle="Give ~/.local/bin/truffle Full Disk Access, then restart it"
         actions={
           <ActionPanel>
-            <Action title="Open Full Disk Access Settings" icon={Icon.Gear} onAction={() => open("x-apple.systempreferences:com.apple.preference.security?Privacy_AllFiles")} />
+            <Action
+              title="Open Full Disk Access Settings"
+              icon={Icon.Gear}
+              onAction={() => open("x-apple.systempreferences:com.apple.preference.security?Privacy_AllFiles")}
+            />
             <Action title="Reveal Truffle Binary" icon={Icon.Finder} onAction={() => showInFinder(truffleBin)} />
             <Action
               title="Restart Truffle"
@@ -327,7 +402,12 @@ function Setup(props: {
   }
   if (props.duError || props.du?.message) {
     items.push(
-      <List.Item key="meaning-down" icon={{ source: Icon.Warning, tintColor: Color.Orange }} title="Search by meaning isn't answering" subtitle={props.du?.message ?? props.duError?.message} />,
+      <List.Item
+        key="meaning-down"
+        icon={{ source: Icon.Warning, tintColor: Color.Orange }}
+        title="Search by meaning isn't answering"
+        subtitle={props.du?.message ?? props.duError?.message}
+      />,
     );
   } else if (props.du && props.du.folders.length === 0) {
     items.push(
@@ -336,7 +416,11 @@ function Setup(props: {
         icon={{ source: Icon.Info, tintColor: Color.Blue }}
         title="Search by meaning is off"
         subtitle="Choose the folders to search by what they show or say"
-        actions={<ActionPanel>{copy("Copy Command", "truffle meaning folders add ~/Documents ~/Downloads ~/Desktop")}</ActionPanel>}
+        actions={
+          <ActionPanel>
+            {copy("Copy Command", "truffle meaning folders add ~/Documents ~/Downloads ~/Desktop")}
+          </ActionPanel>
+        }
       />,
     );
   } else if (props.du?.encoder === "unavailable") {
@@ -350,7 +434,14 @@ function Setup(props: {
       />,
     );
   } else if (props.du && props.du.vectors === 0) {
-    items.push(<List.Item key="meaning-empty" icon={{ source: Icon.Clock, tintColor: Color.Blue }} title="Indexing your folders…" subtitle={props.du.folders.map((f) => tilde(f, home)).join(", ")} />);
+    items.push(
+      <List.Item
+        key="meaning-empty"
+        icon={{ source: Icon.Clock, tintColor: Color.Blue }}
+        title="Indexing your folders…"
+        subtitle={props.du.folders.map((f) => tilde(f, home)).join(", ")}
+      />,
+    );
   }
   return items.length ? <List.Section title="Setup">{items}</List.Section> : null;
 }

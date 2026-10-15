@@ -19,8 +19,11 @@ end run`;
 
 function openInQuickTime(file: string, seconds: number): Promise<void> {
   return new Promise((resolve, reject) => {
-    execFile("/usr/bin/osascript", ["-e", QUICKTIME, file, String(Math.round(seconds * 1000))], { timeout: 15_000 }, (error) =>
-      error ? reject(error) : resolve(),
+    execFile(
+      "/usr/bin/osascript",
+      ["-e", QUICKTIME, file, String(Math.round(seconds * 1000))],
+      { timeout: 15_000 },
+      (error) => (error ? reject(error) : resolve()),
     );
   });
 }
