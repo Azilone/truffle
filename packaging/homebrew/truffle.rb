@@ -33,11 +33,8 @@ class Truffle < Formula
 
   def caveats
     <<~EOS
-      Start the daemon at login and fetch the model (865 MB, once):
-        truffle install --login
-        truffle model download
-        truffle meaning folders add ~/Documents ~/Downloads ~/Desktop
-      On macOS, give ~/.local/bin/truffle Full Disk Access in System Settings › Privacy & Security.
+      Run the guided setup (login service, Full Disk Access, the model, the folders):
+        truffle setup
     EOS
   end
 

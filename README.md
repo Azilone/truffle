@@ -14,16 +14,16 @@ One Rust binary, `truffle`, for macOS and Linux:
 It runs as a small daemon with a JSON-lines socket, an MCP server for coding agents, and a Raycast extension.
 
 ```bash
-brew install azilone/tap/truffle && truffle install --login     # or: cargo build --release, then ./target/release/truffle install --login
-truffle model download                                   # 865 MB, once
-truffle meaning folders add ~/Documents ~/Downloads ~/Desktop
+brew install azilone/tap/truffle
+truffle setup        # guided: login service, Full Disk Access, the model (865 MB, once), the folders
 truffle 'facture'                                         # names
 truffle 'grep:TODO in:~/Code/app'                         # contents
 truffle meaning search 'relevé de compte bancaire'        # meaning
 ```
 
-On macOS, give `~/.local/bin/truffle` Full Disk Access (System Settings › Privacy & Security), or it leaves Desktop,
-Documents and Downloads alone rather than wait on a consent prompt.
+On macOS, `truffle setup` opens Full Disk Access and shows the binary to drag in; the daemon notices the grant by
+itself (no restart). Without it, Truffle leaves Desktop, Documents and Downloads alone rather than wait on a consent
+prompt.
 
 ## Measured (M1 Pro, macOS 27; 1.7 M files on disk, 1,924 files searched by meaning)
 
