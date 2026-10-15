@@ -32,6 +32,7 @@ pub fn serve(dir: PathBuf, home: String) {
     let _ = lock.set_len(0).and_then(|_| write!(lock, "{}", std::process::id()));
     let git = Git::new(&home);
     git::kill_on_term();
+    restart_when_access_granted();
     let engine = match Engine::start(Options { dir: dir.clone(), home, skip: None }) {
         Ok(e) => e,
         Err(e) => {
@@ -59,6 +60,34 @@ pub fn serve(dir: PathBuf, home: String) {
         let cx = cx.clone();
         std::thread::spawn(move || handle(conn, &cx));
     }
+}
+
+/// Without Full Disk Access the daemon leaves Desktop, Documents and Downloads alone. The moment access is granted
+/// it starts over in place (exec of itself: same pid, so launchd and clients don't notice), now with every folder;
+/// nobody has to restart it. Files are close-on-exec, so the socket and the index lock are let go first.
+fn restart_when_access_granted() {
+    if truffle_index::has_full_disk_access() {
+        return;
+    }
+    std::thread::Builder::new()
+        .name("truffle-access".into())
+        .spawn(|| {
+            while !truffle_index::has_full_disk_access() {
+                std::thread::sleep(Duration::from_secs(3));
+            }
+            eprintln!("{} Full Disk Access granted: restarting to index every folder", truffle_index::query::now_secs());
+            let Ok(exe) = std::env::current_exe() else { return };
+            let args: Vec<std::ffi::CString> = std::env::args_os()
+                .filter_map(|a| std::ffi::CString::new(a.as_bytes()).ok())
+                .collect();
+            let Ok(path) = std::ffi::CString::new(exe.as_os_str().as_bytes()) else { return };
+            let mut argv: Vec<*const libc::c_char> = args.iter().map(|a| a.as_ptr()).collect();
+            argv.push(std::ptr::null());
+            unsafe { libc::execv(path.as_ptr(), argv.as_ptr()) };
+            // exec failed: leave, and launchd (or the next query) starts a fresh daemon.
+            std::process::exit(0);
+        })
+        .ok();
 }
 
 /// What requests reach: the engine, the git status of what it finds, and

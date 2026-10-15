@@ -52,6 +52,14 @@ export default function Command() {
   const seq = useRef(0);
 
   const fsStatus = usePromise(fsearchStatus, [], { onError: () => {} });
+  // While Full Disk Access is missing, look again every 3 s: the daemon restarts itself once it's granted, and the
+  // setup item goes away by itself.
+  const waitingForAccess = fsStatus.data?.ready === true && !fsStatus.data.fullDiskAccess;
+  useEffect(() => {
+    if (!waitingForAccess) return;
+    const timer = setInterval(() => fsStatus.revalidate(), 3000);
+    return () => clearInterval(timer);
+  }, [waitingForAccess]);
   const duStatus = usePromise(digupStatus, [], { onError: () => {} });
 
   useEffect(() => {
@@ -377,16 +385,18 @@ function Setup(props: {
       <List.Item
         key="fda"
         icon={{ source: Icon.Lock, tintColor: Color.Orange }}
-        title="Truffle skips Desktop, Documents and Downloads"
-        subtitle="Give ~/.local/bin/truffle Full Disk Access, then restart it"
+        title="Allow Truffle into Desktop, Documents and Downloads"
+        subtitle="Press ↵, then drag truffle from Finder into Full Disk Access and switch it on"
         actions={
           <ActionPanel>
             <Action
-              title="Open Full Disk Access Settings"
-              icon={Icon.Gear}
-              onAction={() => open("x-apple.systempreferences:com.apple.preference.security?Privacy_AllFiles")}
+              title="Set up Full Disk Access"
+              icon={Icon.Lock}
+              onAction={async () => {
+                await open("x-apple.systempreferences:com.apple.preference.security?Privacy_AllFiles");
+                await showInFinder(truffleBin);
+              }}
             />
-            <Action title="Reveal Truffle Binary" icon={Icon.Finder} onAction={() => showInFinder(truffleBin)} />
             <Action
               title="Restart Truffle"
               icon={Icon.RotateClockwise}

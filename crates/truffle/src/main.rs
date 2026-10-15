@@ -20,6 +20,7 @@ const USAGE: &str = "usage:
   truffle mcp                   MCP server on stdin/stdout, for coding agents
   truffle serve                 run the daemon in the foreground
   truffle status
+  truffle setup                 guided first run: install, Full Disk Access, the model, the folders
   truffle install [--login]     copy to ~/.local/bin; --login also starts the daemon at login
                                 (a LaunchAgent on macOS, which needs Full Disk Access granted
                                 to ~/.local/bin/truffle; a systemd user service on Linux)
@@ -55,6 +56,7 @@ fn main() {
         Some("status") => print_one(&serde_json::json!({"op": "status"}), true),
         Some("bench") => bench(&args[1..].join(" ")),
         Some("install") => install(args.iter().any(|a| a == "--login")),
+        Some("setup") => setup(),
         Some("meaning") => exit_with(meaning::run(args[1..].to_vec())),
         Some("model") if args.get(1).map(String::as_str) == Some("download") => {
             exit_with(meaning::run([vec!["download-model".to_string()], args[2..].to_vec()].concat()))
@@ -334,6 +336,72 @@ mod service {
         let _ = std::fs::remove_file(unit_path());
         systemctl(&["daemon-reload"]);
     }
+}
+
+/// `truffle setup`: everything a first run needs, one step at a time, each checked rather than assumed: the login
+/// service, Full Disk Access (macOS; the daemon picks it up by itself, see server.rs), the model, and the folders to
+/// search by meaning. Run it again any time: done steps say so and are skipped.
+fn setup() {
+    let ok = |what: &str| println!("  \u{2713} {what}");
+    println!("Truffle setup\n");
+    // 1. The binary in ~/.local/bin and the daemon at login.
+    let bin = PathBuf::from(home()).join(".local/bin/truffle");
+    let installed = std::env::current_exe().ok().and_then(|e| e.canonicalize().ok()) == bin.canonicalize().ok();
+    if !installed || !service::installed() {
+        install(true);
+    }
+    ok(&format!("daemon runs at login from {}", bin.display()));
+    // 2. Full Disk Access, as the daemon sees it (this terminal's own access says nothing about the daemon's).
+    let dir = data_dir();
+    let access = || mcp::ask_at(&dir, &serde_json::json!({"op": "status"})).ok().and_then(|v| v["full_disk_access"].as_bool());
+    let mut waited = 0;
+    while access().is_none() && waited < 60 {
+        std::thread::sleep(std::time::Duration::from_millis(500));
+        waited += 1;
+    }
+    if cfg!(target_os = "macos") && access() != Some(true) {
+        println!("\n  Full Disk Access lets Truffle search Desktop, Documents and Downloads.");
+        println!("  System Settings opens on Full Disk Access, and Finder shows the truffle binary:");
+        println!("    drag \"truffle\" from Finder into the list (or click + and pick it), and switch it on.\n");
+        let _ = std::process::Command::new("open").arg("x-apple.systempreferences:com.apple.preference.security?Privacy_AllFiles").status();
+        let _ = std::process::Command::new("open").arg("-R").arg(&bin).status();
+        print!("  waiting for access…");
+        let _ = std::io::stdout().flush();
+        // The daemon checks every 3 s and restarts itself once it has access.
+        while access() != Some(true) {
+            std::thread::sleep(std::time::Duration::from_secs(2));
+        }
+        println!(" granted.");
+    }
+    ok("Full Disk Access");
+    // 3. The model (865 MB, once).
+    if truffle_embed::Models::complete() {
+        ok("model downloaded");
+    } else {
+        println!("\n  Downloading the model (865 MB, once)…");
+        if meaning::run(vec!["download-model".into()]) != std::process::ExitCode::SUCCESS {
+            die("the download failed; run `truffle model download` to try again");
+        }
+        ok("model downloaded");
+    }
+    // 4. The folders searched by meaning: Desktop, Documents and Downloads unless some are chosen already.
+    if meaning::daemon::folders().is_empty() {
+        let picks: Vec<String> = ["Desktop", "Documents", "Downloads"]
+            .iter()
+            .map(|d| PathBuf::from(home()).join(d))
+            .filter(|p| p.is_dir())
+            .map(|p| p.to_string_lossy().into_owned())
+            .collect();
+        if let Err(e) = meaning::daemon::set_folders(&picks) {
+            die(&e);
+        }
+        // The daemon reads the folders when it starts.
+        let _ = server::stop(&dir);
+    }
+    ok(&format!("searching by meaning in {}", meaning::daemon::folders().join(", ")));
+    let _ = mcp::ask_at(&dir, &serde_json::json!({"op": "meaning.index"}));
+    println!("\nDone. The first indexing runs in the background (a few minutes for a few thousand files).");
+    println!("Try: truffle meaning search \"a screenshot of an error\"   ·   in Raycast: Truffle Search");
 }
 
 /// Leave with a meaning command's status.

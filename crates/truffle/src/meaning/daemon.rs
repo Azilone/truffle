@@ -7,7 +7,7 @@
 
 use std::io::{BufRead, BufReader, Write};
 use std::os::unix::ffi::OsStrExt;
-use std::path::{Path, PathBuf};
+use std::path::Path;
 use std::process::{Child, ChildStdin, Command, Stdio};
 use std::sync::{Arc, Mutex, OnceLock};
 use std::time::{Duration, Instant};
@@ -244,7 +244,3 @@ fn readable_roots(all: Vec<String>) -> (Vec<String>, Vec<String>) {
     })
 }
 
-/// Where the daemon's meaning index lives, for `status`.
-pub fn index_dir() -> PathBuf {
-    paths::index()
-}

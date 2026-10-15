@@ -46,7 +46,7 @@ pub(crate) unsafe extern "C" fn callback(
     if text.is_null() {
         return;
     }
-    let text = CStr::from_ptr(text).to_string_lossy();
+    let text = unsafe { CStr::from_ptr(text) }.to_string_lossy();
     let Ok(mut state) = STATE.lock() else { return };
     if level != ffi::GGML_LOG_LEVEL_CONT {
         state.level = level;

@@ -776,7 +776,7 @@ impl View {
 /// One request to the daemon. A connection each, its write side closed once
 /// the request is out: the daemon then knows no keystroke follows and
 /// doesn't keep the cores spinning for one (agents think for seconds).
-fn ask_at(dir: &Path, req: &Value) -> Result<Value, String> {
+pub(crate) fn ask_at(dir: &Path, req: &Value) -> Result<Value, String> {
     let t = Instant::now();
     loop {
         let mut s = crate::server::connect(dir).map_err(|e| format!("cannot reach the truffle daemon: {e}"))?;

@@ -134,6 +134,3 @@ pub fn physical_memory() -> u64 {
 pub fn fullscreen_busy() -> bool {
     false
 }
-
-/// Windows-only concern (DLL planting); nothing to do here.
-pub fn harden_dll_search() {}
