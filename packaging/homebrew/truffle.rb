@@ -1,28 +1,28 @@
-# Homebrew formula for Truffle. Goes in a tap (github.com/<owner>/homebrew-tap, Formula/truffle.rb); fill in the
+# Homebrew formula for Truffle. Goes in a tap (github.com/Azilone/homebrew-tap, Formula/truffle.rb); fill in the
 # version and the SHA-256s from a release's *.sha256 files.
 class Truffle < Formula
   desc "Find any file by name, content or meaning. Instantly, offline"
-  homepage "https://github.com/kevindejouet/truffle"
+  homepage "https://github.com/Azilone/truffle"
   version "0.1.0"
   license "MIT"
 
   on_macos do
     on_arm do
-      url "https://github.com/kevindejouet/truffle/releases/download/v#{version}/truffle-v#{version}-aarch64-apple-darwin.tar.gz"
+      url "https://github.com/Azilone/truffle/releases/download/v#{version}/truffle-v#{version}-aarch64-apple-darwin.tar.gz"
       sha256 "REPLACE_WITH_SHA256"
     end
     on_intel do
-      url "https://github.com/kevindejouet/truffle/releases/download/v#{version}/truffle-v#{version}-x86_64-apple-darwin.tar.gz"
+      url "https://github.com/Azilone/truffle/releases/download/v#{version}/truffle-v#{version}-x86_64-apple-darwin.tar.gz"
       sha256 "REPLACE_WITH_SHA256"
     end
   end
   on_linux do
     on_arm do
-      url "https://github.com/kevindejouet/truffle/releases/download/v#{version}/truffle-v#{version}-aarch64-unknown-linux-gnu.tar.gz"
+      url "https://github.com/Azilone/truffle/releases/download/v#{version}/truffle-v#{version}-aarch64-unknown-linux-gnu.tar.gz"
       sha256 "REPLACE_WITH_SHA256"
     end
     on_intel do
-      url "https://github.com/kevindejouet/truffle/releases/download/v#{version}/truffle-v#{version}-x86_64-unknown-linux-gnu.tar.gz"
+      url "https://github.com/Azilone/truffle/releases/download/v#{version}/truffle-v#{version}-x86_64-unknown-linux-gnu.tar.gz"
       sha256 "REPLACE_WITH_SHA256"
     end
   end

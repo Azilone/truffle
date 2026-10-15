@@ -14,7 +14,7 @@ One Rust binary, `truffle`, for macOS and Linux:
 It runs as a small daemon with a JSON-lines socket, an MCP server for coding agents, and a Raycast extension.
 
 ```bash
-cargo build --release && ./target/release/truffle install --login
+brew install azilone/tap/truffle && truffle install --login     # or: cargo build --release, then ./target/release/truffle install --login
 truffle model download                                   # 865 MB, once
 truffle meaning folders add ~/Documents ~/Downloads ~/Desktop
 truffle 'facture'                                         # names
@@ -65,7 +65,8 @@ process that exits when it's done, so the image and audio encoders' memory goes 
 
 - macOS (Apple Silicon) and Linux (x86_64, arm64): built and tested. Windows: not yet.
 - Linux reads no text in pictures yet (no OCR), and indexes video frames only with `ffmpeg` installed.
-- Releases (cargo-dist, Homebrew tap) and the Raycast Store listing are next.
+- Releases: GitHub (macOS arm64/x86_64, Linux x86_64/arm64) and `brew install azilone/tap/truffle`. Raycast Store
+  listing next.
 
 ## Credits
 
