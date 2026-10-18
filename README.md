@@ -8,17 +8,17 @@
 
 One Rust binary for macOS and Linux. Free and open source.
 
-[![Release](https://img.shields.io/github/v/release/Azilone/truffle?color=b06a3f&label=release)](https://github.com/Azilone/truffle/releases)
-[![License: MIT](https://img.shields.io/badge/license-MIT-b06a3f)](LICENSE)
 ![macOS | Linux](https://img.shields.io/badge/macOS%20%7C%20Linux-333)
-[![Stars](https://img.shields.io/github/stars/Azilone/truffle?style=flat&color=333)](https://github.com/Azilone/truffle/stargazers)
+![Rust](https://img.shields.io/badge/Rust-b06a3f?logo=rust&logoColor=white)
+[![License: MIT](https://img.shields.io/badge/license-MIT-333)](LICENSE)
+![100% offline](https://img.shields.io/badge/100%25-offline-b06a3f)
 
 <table>
   <tr>
     <td align="center" width="200"><h2>33 MB</h2>one binary</td>
     <td align="center" width="200"><h2>50 MB</h2>RAM, idle</td>
     <td align="center" width="200"><h2>&lt; 1 ms</h2>across 3 M files</td>
-    <td align="center" width="200"><h2>0</h2>bytes leave your machine</td>
+    <td align="center" width="200"><h2>0</h2>cloud calls</td>
   </tr>
 </table>
 
