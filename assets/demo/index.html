@@ -1,0 +1,396 @@
+<!doctype html>
+<html>
+<head>
+<meta charset="utf-8">
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  html, body { width: 1200px; height: 800px; overflow: hidden; background: #000; }
+  body { font-family: -apple-system, "SF Pro Text", system-ui, sans-serif; -webkit-font-smoothing: antialiased; }
+  #stage { position: relative; width: 1200px; height: 800px; overflow: hidden; }
+  .layer { position: absolute; inset: 0; }
+
+  /* walls */
+  #wall-mac { background: linear-gradient(180deg, #f3ddd0 0%, #e9c6b4 45%, #b98a74 100%); }
+  #wall-linux { background: radial-gradient(120% 90% at 70% 20%, #7a2a5a 0%, #3d1235 55%, #22091e 100%); }
+  #menubar { position: absolute; top: 0; left: 0; right: 0; height: 26px; background: rgba(255,255,255,.28);
+    backdrop-filter: blur(20px); display: flex; align-items: center; padding: 0 14px; gap: 18px;
+    font-size: 13px; color: #2a1a12; font-weight: 500; }
+  #menubar .r { margin-left: auto; opacity: .8; font-weight: 400; }
+  #topbar { position: absolute; top: 0; left: 0; right: 0; height: 28px; background: #111; color: #eee;
+    font-size: 13px; display: flex; align-items: center; justify-content: center; font-weight: 600; }
+  #topbar .l { position: absolute; left: 14px; font-weight: 500; opacity: .85; }
+  #dock { position: absolute; left: 0; top: 28px; bottom: 0; width: 64px; background: rgba(0,0,0,.45);
+    display: flex; flex-direction: column; align-items: center; padding-top: 14px; gap: 12px; }
+  #dock i { display: block; width: 40px; height: 40px; border-radius: 10px; background: rgba(255,255,255,.12); }
+  #dock i.t { background: #2b2b2b; border: 1px solid #555; }
+
+  /* caption */
+  #cap { position: absolute; top: 44px; left: 0; right: 0; display: flex; justify-content: center; }
+  #cap span { background: rgba(30,18,12,.82); color: #fff; font-size: 17px; font-weight: 600; letter-spacing: .2px;
+    padding: 8px 16px; border-radius: 999px; box-shadow: 0 6px 20px rgba(0,0,0,.18); }
+  #cap span em { font-style: normal; color: #e9a679; }
+
+  /* launcher */
+  #win { position: absolute; left: 150px; top: 96px; width: 900px; height: 560px; border-radius: 16px;
+    background: rgba(38,34,33,.92); backdrop-filter: blur(30px); color: #f2ece8;
+    box-shadow: 0 30px 80px rgba(40,15,5,.45), 0 0 0 1px rgba(255,255,255,.08) inset; overflow: hidden;
+    display: flex; flex-direction: column; transform-origin: 50% 30%; }
+  .bar { height: 62px; display: flex; align-items: center; padding: 0 20px; gap: 12px;
+    border-bottom: 1px solid rgba(255,255,255,.08); font-size: 22px; flex: none; }
+  .bar svg { flex: none; opacity: .65; }
+  .bar .q { white-space: pre; }
+  .bar .ph { color: rgba(255,255,255,.35); }
+  .caret { display: inline-block; width: 2px; height: 26px; background: #e9a679; margin-left: 1px; vertical-align: middle; }
+  .bar .brand { margin-left: auto; display: flex; align-items: center; gap: 8px; font-size: 13px; color: rgba(255,255,255,.5); font-weight: 600; }
+  .bar .brand img { width: 26px; }
+  .body { flex: 1; display: flex; min-height: 0; }
+  .list { width: 380px; flex: none; padding: 10px 8px; border-right: 1px solid rgba(255,255,255,.07); overflow: hidden; }
+  .sec { font-size: 11px; font-weight: 700; letter-spacing: .8px; color: rgba(255,255,255,.4); padding: 10px 10px 6px; }
+  .it { display: flex; align-items: center; gap: 11px; padding: 8px 10px; border-radius: 9px; }
+  .it.sel { background: rgba(233,166,121,.22); box-shadow: 0 0 0 1px rgba(233,166,121,.35) inset; }
+  .ic { width: 38px; height: 38px; flex: none; border-radius: 7px; background: rgba(255,255,255,.08);
+    display: flex; align-items: center; justify-content: center; overflow: hidden; position: relative; }
+  .ic img { width: 100%; height: 100%; object-fit: cover; }
+  .ic .play { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; }
+  .tx { min-width: 0; flex: 1; }
+  .nm { font-size: 14px; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; display: flex; gap: 6px; align-items: center; }
+  .nm mark, .snip mark { background: none; color: #f0b48a; }
+  .badge { font-size: 10.5px; font-weight: 700; padding: 1px 6px; border-radius: 5px; background: rgba(255,255,255,.12); color: rgba(255,255,255,.75); }
+  .sub { font-size: 12px; color: rgba(255,255,255,.45); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; margin-top: 2px; }
+  .snip { font-size: 12px; color: rgba(255,255,255,.6); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; margin-top: 2px; }
+  .prev { flex: 1; padding: 20px 24px; display: flex; flex-direction: column; min-width: 0; }
+  .media { height: 270px; border-radius: 12px; overflow: hidden; background: rgba(0,0,0,.3); flex: none; position: relative;
+    display: flex; align-items: center; justify-content: center; }
+  .media img.ph { width: 100%; height: 100%; object-fit: cover; }
+  .meta h3 { font-size: 17px; margin-top: 16px; }
+  .meta .p { font-size: 12.5px; color: rgba(255,255,255,.5); margin-top: 4px; }
+  .why { margin-top: 12px; font-size: 13px; color: #f0b48a; display: flex; gap: 7px; align-items: center; font-weight: 600; }
+  .btns { margin-top: auto; display: flex; gap: 8px; }
+  .btn { font-size: 12.5px; padding: 6px 12px; border-radius: 7px; background: rgba(255,255,255,.1); font-weight: 600; }
+  .btn.pri { background: #c67a4a; color: #fff; }
+  .foot { height: 38px; flex: none; border-top: 1px solid rgba(255,255,255,.08); display: flex; align-items: center;
+    padding: 0 18px; font-size: 12px; color: rgba(255,255,255,.45); }
+  .foot b { color: #f0b48a; font-weight: 700; }
+  .foot .h { margin-left: auto; display: flex; gap: 14px; }
+  .foot kbd { font-family: inherit; background: rgba(255,255,255,.1); border-radius: 4px; padding: 1px 5px; margin-right: 4px; color: rgba(255,255,255,.7); }
+  .searching { flex: 1; display: flex; align-items: center; justify-content: center; color: rgba(255,255,255,.4); font-size: 14px; }
+
+  /* pdf page */
+  .page { width: 250px; height: 262px; background: #fbfaf7; border-radius: 3px; padding: 16px 18px; color: #333;
+    box-shadow: 0 6px 20px rgba(0,0,0,.4); font-family: Georgia, serif; overflow: hidden; }
+  .page .t { font-size: 10px; font-weight: 700; letter-spacing: 1px; text-align: center; margin-bottom: 8px; }
+  .page .ln { height: 4px; background: #d8d4cc; border-radius: 2px; margin: 5px 0; }
+  .page .hl { background: rgba(240,180,138,.55); border-radius: 3px; padding: 5px 6px; font-size: 8.6px; line-height: 1.35; margin: 8px -6px; }
+  .page .hl b { font-size: 9px; display: block; margin-bottom: 2px; }
+  /* doc page */
+  .mdp { width: 100%; height: 100%; background: #1f1c1b; padding: 22px 26px; font-size: 13.5px; line-height: 1.6; color: rgba(255,255,255,.78); text-align: left; align-self: stretch; }
+  .mdp h4 { font-size: 19px; color: #fff; margin-bottom: 8px; }
+  .mdp .m { color: rgba(255,255,255,.4); }
+
+  /* waveform */
+  .wave { display: flex; align-items: center; gap: 3px; height: 120px; }
+  .wave i { display: block; width: 5px; border-radius: 3px; background: rgba(255,255,255,.25); }
+  .wave i.on { background: #e9a679; }
+  .time { position: absolute; bottom: 16px; left: 0; right: 0; text-align: center; font-size: 13px; color: rgba(255,255,255,.6); font-variant-numeric: tabular-nums; }
+
+  /* keys */
+  #keys { position: absolute; bottom: 34px; left: 0; right: 0; display: flex; justify-content: center; }
+  #keys .k { display: flex; gap: 8px; align-items: center; background: rgba(30,18,12,.75); padding: 8px 10px; border-radius: 14px; }
+  #keys kbd { font-family: inherit; color: #fff; font-size: 15px; font-weight: 600; min-width: 38px; height: 36px; padding: 0 12px;
+    border-radius: 8px; background: rgba(255,255,255,.12); display: flex; align-items: center; justify-content: center;
+    box-shadow: 0 2px 0 rgba(0,0,0,.4); }
+  #keys kbd.dn { background: #c67a4a; transform: translateY(2px); box-shadow: none; }
+  #keys .lbl { color: rgba(255,255,255,.75); font-size: 14px; padding: 0 6px; font-weight: 600; }
+
+  /* terminal */
+  #term { position: absolute; left: 182px; top: 96px; width: 900px; height: 560px; border-radius: 12px; background: #1d1b1f;
+    box-shadow: 0 30px 80px rgba(0,0,0,.5); overflow: hidden; font-family: "SF Mono", Menlo, monospace; color: #e8e2ea; }
+  #term .tb { height: 38px; background: #2c2830; display: flex; align-items: center; justify-content: center; font-family: -apple-system, system-ui;
+    font-size: 13px; font-weight: 600; color: #cfc6d4; position: relative; }
+  #term .tb .d { position: absolute; right: 14px; display: flex; gap: 8px; }
+  #term .tb .d i { width: 14px; height: 14px; border-radius: 50%; background: #4a444f; display: block; }
+  #term .tb .d i.x { background: #e95420; }
+  #term pre { padding: 20px 24px; font-size: 16.5px; line-height: 1.55; font-family: inherit; white-space: pre-wrap; }
+  .pr { color: #8ae234; font-weight: 700; } .pa { color: #729fcf; font-weight: 700; }
+  .dim { color: #8d8492; } .hit { color: #f0b48a; font-weight: 700; } .nmc { color: #fff; font-weight: 700; }
+  .tc { display: inline-block; width: 9px; height: 18px; background: #e8e2ea; vertical-align: text-bottom; }
+
+  /* end */
+  #end { background: radial-gradient(90% 80% at 50% 35%, #3a2419 0%, #1c110c 70%); display: flex; flex-direction: column; align-items: center; justify-content: center; color: #fff; }
+  #end img { width: 210px; }
+  #end h1 { font-size: 64px; font-weight: 800; letter-spacing: -1.5px; margin-top: 8px; }
+  #end .tag { font-size: 24px; color: rgba(255,255,255,.75); margin-top: 6px; }
+  #end .cmd { margin-top: 30px; font-family: "SF Mono", Menlo, monospace; font-size: 20px; background: rgba(255,255,255,.08);
+    border: 1px solid rgba(233,166,121,.4); padding: 12px 22px; border-radius: 12px; color: #f0b48a; }
+  #end .cmd span { color: rgba(255,255,255,.4); }
+  #end .stats { display: flex; gap: 34px; margin-top: 30px; font-size: 15px; color: rgba(255,255,255,.55); }
+  #end .stats b { display: block; font-size: 26px; color: #fff; text-align: center; }
+  #end .stats div { text-align: center; }
+  #end .url { margin-top: 30px; font-size: 15px; color: rgba(255,255,255,.45); }
+</style>
+</head>
+<body>
+<div id="stage">
+  <div class="layer" id="wall-mac">
+    <svg width="1200" height="800" viewBox="0 0 1200 800" style="position:absolute;inset:0">
+      <path d="M0 520 L140 410 L260 470 L420 330 L560 450 L700 360 L860 470 L1000 380 L1200 460 L1200 800 L0 800Z" fill="#d7ab95" opacity=".7"/>
+      <path d="M0 600 L180 500 L330 570 L520 470 L690 580 L860 500 L1040 590 L1200 520 L1200 800 L0 800Z" fill="#c2917a" opacity=".8"/>
+      <path d="M0 690 L220 610 L420 680 L640 600 L860 690 L1060 620 L1200 670 L1200 800 L0 800Z" fill="#9c6c58"/>
+    </svg>
+    <div id="menubar"><b style="font-size:15px"></b><span>Finder</span><span style="font-weight:400">File</span><span style="font-weight:400">Edit</span><span style="font-weight:400">View</span><span class="r">Sat 18 Oct 9:41</span></div>
+  </div>
+  <div class="layer" id="wall-linux">
+    <div id="topbar"><span class="l">Activities</span>Oct 18 9:41</div>
+    <div id="dock"><i></i><i class="t"></i><i></i><i></i></div>
+  </div>
+
+  <div id="win">
+    <div class="bar">
+      <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2.4" stroke-linecap="round"><circle cx="10.5" cy="10.5" r="7"/><path d="M16 16l5 5"/></svg>
+      <span id="q"></span>
+      <span class="brand"><img src="../logo.png">Truffle</span>
+    </div>
+    <div class="body" id="body"></div>
+    <div class="foot" id="foot"></div>
+  </div>
+
+  <div id="term">
+    <div class="tb">you@linux: ~<span class="d"><i></i><i></i><i class="x"></i></span></div>
+    <pre id="tout"></pre>
+  </div>
+
+  <div id="cap"><span id="capt"></span></div>
+  <div id="keys"><div class="k" id="kk"></div></div>
+  <div class="layer" id="end">
+    <img src="../logo.png">
+    <h1>Truffle</h1>
+    <div class="tag">Find any file by name, content or meaning. Offline.</div>
+    <div class="cmd"><span>$</span> brew install azilone/tap/truffle</div>
+    <div class="stats">
+      <div><b>33 MB</b>one binary</div>
+      <div><b>50 MB</b>RAM</div>
+      <div><b>&lt; 1 ms</b>name search</div>
+      <div><b>100%</b>offline</div>
+    </div>
+    <div class="url">github.com/Azilone/truffle</div>
+  </div>
+</div>
+
+<script>
+const $ = id => document.getElementById(id);
+const clamp = (x, a = 0, b = 1) => Math.max(a, Math.min(b, x));
+const ease = x => 1 - Math.pow(1 - clamp(x), 3);
+const prog = (t, a, b) => clamp((t - a) / (b - a));
+const typed = (s, t, start, dt) => { const n = Math.floor((t - start) / dt); return n <= 0 ? '' : [...s].slice(0, n).join(''); };
+const typeEnd = (s, start, dt) => start + [...s].length * dt;
+
+const ICON = {
+  doc: '<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#ddd" stroke-width="1.8"><path d="M6 2h8l4 4v16H6z"/><path d="M9 11h6M9 15h6M9 19h4"/></svg>',
+  pdf: '<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#f29b84" stroke-width="1.8"><path d="M6 2h8l4 4v16H6z"/><path d="M9 13h6M9 17h6"/></svg>',
+  audio: '<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#e9a679" stroke-width="2" stroke-linecap="round"><path d="M4 10v4M8 7v10M12 4v16M16 8v8M20 11v2"/></svg>',
+  video: '<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#9fc3f2" stroke-width="1.8"><rect x="3" y="6" width="13" height="12" rx="2"/><path d="M16 10l5-3v10l-5-3"/></svg>',
+  folder: '<svg width="20" height="20" viewBox="0 0 24 24" fill="#d9a066"><path d="M3 6a2 2 0 012-2h4l2 2h8a2 2 0 012 2v10a2 2 0 01-2 2H5a2 2 0 01-2-2z"/></svg>',
+  play: '<svg width="16" height="16" viewBox="0 0 24 24"><circle cx="12" cy="12" r="11" fill="rgba(0,0,0,.55)"/><path d="M10 8l6 4-6 4z" fill="#fff"/></svg>',
+  look: '<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="#f0b48a" stroke-width="2.4" stroke-linecap="round"><circle cx="10.5" cy="10.5" r="6.5"/><path d="M15.5 15.5l5 5"/></svg>',
+};
+
+function item(o, sel) {
+  const ic = o.img ? `<img src="${o.img}">${o.vid ? `<span class="play">${ICON.play}</span>` : ''}` : ICON[o.kind];
+  return `<div class="it${sel ? ' sel' : ''}"><div class="ic">${ic}</div><div class="tx">
+    <div class="nm"><span>${o.name}</span>${o.badge ? `<span class="badge">${o.badge}</span>` : ''}</div>
+    ${o.snip ? `<div class="snip">${o.snip}</div>` : `<div class="sub">${o.path}</div>`}</div></div>`;
+}
+function list(groups) {
+  return groups.map(g => (g.sec ? `<div class="sec">${g.sec}</div>` : '') + g.items.map(i => item(i, i.sel)).join('')).join('');
+}
+const foot = (n, ms) => `<span><b>${n}</b> results · ${ms}</span><span class="h"><span><kbd>↵</kbd>Open</span><span><kbd>⌘↵</kbd>Reveal</span><span><kbd>⌘Y</kbd>Quick Look</span></span>`;
+const btns = '<div class="btns"><span class="btn pri">Open</span><span class="btn">Show in Finder</span></div>';
+
+/* ---------- scenes ---------- */
+const DOGS = [
+  { sec: 'IMAGES', items: [
+    { img: 'dog1.jpg', name: 'IMG_4133.jpg', path: '~/Pictures/Summer 2025', sel: true },
+    { img: 'dog2.jpg', name: 'IMG_4127.jpg', path: '~/Pictures/Summer 2025' },
+    { img: 'dog3.jpg', name: 'IMG_4128.jpg', path: '~/Pictures/Summer 2025' },
+  ]},
+  { sec: 'VIDEO', items: [ { img: 'dog3.jpg', vid: 1, name: 'Beach day.mov', badge: '0:12', path: '~/Movies' } ] },
+];
+const dogPrev = a => `<div class="media" style="opacity:${a}"><img class="ph" src="dog1.jpg"></div>
+  <div class="meta" style="opacity:${a}"><h3>IMG_4133.jpg</h3><div class="p">~/Pictures/Summer 2025 · Image · 3713 × 2477</div>
+  <div class="why">${ICON.look} Matches the picture</div></div>${btns}`;
+
+const S = {
+  names: { at: 1.45, dt: 0.11, q: 'recete', cap: 'By <em>name</em> · typos welcome' },
+  dog:   { at: 4.6,  dt: 0.055, q: 'a dog on the beach', cap: 'By <em>meaning</em> · photos & videos' },
+  lease: { at: 9.3,  dt: 0.042, q: 'the clause about pets in the lease', cap: 'By <em>meaning</em> · inside PDFs' },
+  audio: { at: 14.3, dt: 0.048, q: 'where they talk about pricing', cap: 'By <em>meaning</em> · what was said' },
+  fr:    { at: 19.4, dt: 0.045, q: 'un chien sur la plage', cap: '<em>100+ languages</em> · Français' },
+  ja:    { at: 22.0, dt: 0.13,  q: '海辺の犬', cap: '<em>100+ languages</em> · 日本語' },
+};
+const order = ['names', 'dog', 'lease', 'audio', 'fr', 'ja'];
+const LINUX = 24.4, END = 31.2, TOTAL = 35;
+
+function sceneAt(t) { let cur = null; for (const k of order) if (t >= S[k].at - 0.25) cur = k; return cur; }
+
+function renderWin(t, opts = {}) {
+  const k = sceneAt(t);
+  const body = $('body'), q = $('q'), f = $('foot');
+  if (!k) { q.innerHTML = '<span class="ph">Search files by name, content or meaning…</span><span class="caret"></span>'; body.innerHTML = ''; f.innerHTML = ''; $('capt').parentNode.style.opacity = 0; return; }
+  const s = S[k], qs = typed(s.q, t, s.at, s.dt), te = typeEnd(s.q, s.at, s.dt);
+  const caretOn = t < te + 0.1 || Math.floor(t * 2.2) % 2 === 0;
+  q.innerHTML = (qs ? `<span class="q">${qs}</span>` : '<span class="ph">Search files by name, content or meaning…</span>') + (caretOn ? '<span class="caret"></span>' : '<span class="caret" style="opacity:0"></span>');
+  $('capt').innerHTML = s.cap;
+  $('capt').parentNode.style.opacity = ease(prog(t, s.at - 0.2, s.at + 0.2));
+  const a = ease(prog(t, te + 0.25, te + 0.55));
+
+  if (k === 'names') {
+    body.style.opacity = 1; f.style.opacity = 1;
+    const n = [...qs].length;
+    if (n < 2) { body.innerHTML = ''; f.innerHTML = ''; return; }
+    let g;
+    if (n < 4) g = [{ items: [
+      { kind: 'doc', name: '<mark>re</mark>cent-notes.txt', path: '~/Documents' },
+      { kind: 'video', name: '<mark>re</mark>cording-0412.mov', path: '~/Movies' },
+      { kind: 'pdf', name: '<mark>rec</mark>eipt-apple.pdf', path: '~/Downloads' },
+      { kind: 'folder', name: '<mark>re</mark>leases', path: '~/Code/truffle' } ] }];
+    else g = [{ items: [
+      { kind: 'doc', name: '<mark>recette</mark>-tarte-chocolat.md', path: '~/Documents/Cuisine', sel: true },
+      { kind: 'pdf', name: '<mark>Recette</mark>s de Noël.pdf', path: '~/Documents/Cuisine' },
+      { kind: 'doc', name: '<mark>recette</mark>_crepes.docx', path: '~/Downloads' },
+      { kind: 'folder', name: '<mark>recette</mark>s', path: '~/Notes' } ] }];
+    const pa = n >= 4 ? ease(prog(t, s.at + 4 * s.dt + 0.1, s.at + 4 * s.dt + 0.4)) : 0;
+    body.innerHTML = `<div class="list">${list(g)}</div><div class="prev">
+      <div class="media" style="opacity:${pa};height:300px"><div class="mdp"><h4># Tarte au chocolat</h4>
+      <span class="m">## Ingrédients</span><br>- 200 g de chocolat noir<br>- 3 œufs, 80 g de sucre<br>- 1 pâte sablée<br>
+      <span class="m">## Étapes</span><br>1. Préchauffer le four à 180 °C…</div></div>
+      <div class="meta" style="opacity:${pa}"><div class="p" style="margin-top:14px">~/Documents/Cuisine · Markdown · 2 KB</div></div>${btns}</div>`;
+    f.innerHTML = foot(4, '<b>0.1 ms</b>');
+    return;
+  }
+  if (t < te + 0.25) {
+    const prev = order[order.indexOf(k) - 1];
+    if (prev && !opts.inner) {
+      renderWin(S[k].at - 0.26, { inner: true });
+      q.innerHTML = (qs ? `<span class="q">${qs}</span>` : '<span class="ph">Search files by name, content or meaning…</span>') + '<span class="caret"></span>';
+      $('capt').innerHTML = s.cap;
+      $('capt').parentNode.style.opacity = ease(prog(t, s.at - 0.2, s.at + 0.2));
+      body.style.opacity = 0.3; f.style.opacity = 0.3;
+      return;
+    }
+    body.innerHTML = ''; f.innerHTML = ''; return;
+  }
+  body.style.opacity = 1; f.style.opacity = 1;
+
+  if (k === 'dog' || k === 'fr' || k === 'ja') {
+    body.innerHTML = `<div class="list" style="opacity:${a}">${list(DOGS)}</div><div class="prev">${dogPrev(a)}</div>`;
+    f.innerHTML = foot(4, '<b>28 ms</b>');
+  } else if (k === 'lease') {
+    const g = [{ sec: 'DOCUMENTS', items: [
+      { kind: 'pdf', name: 'Lease - 12 Rue des Lilas.pdf', badge: 'p. 4', snip: '…one cat or one small <mark>dog</mark> may be kept with…', sel: true },
+      { kind: 'pdf', name: 'Renters insurance.pdf', badge: 'p. 2', snip: '…damage caused by <mark>pets</mark> is not covered…' },
+      { kind: 'doc', name: 'House rules.docx', snip: '…no <mark>animals</mark> in the shared garden…' } ] }];
+    const hl = ease(prog(t, te + 0.7, te + 1.1));
+    body.innerHTML = `<div class="list" style="opacity:${a}">${list(g)}</div><div class="prev">
+      <div class="media" style="opacity:${a}"><div class="page"><div class="t">RESIDENTIAL LEASE AGREEMENT</div>
+      <div class="ln"></div><div class="ln" style="width:80%"></div><div class="ln"></div><div class="ln" style="width:60%"></div>
+      <div class="hl" style="background:rgba(240,180,138,${.15 + .5 * hl})"><b>12. PETS</b>The Tenant may keep one cat or one small dog under 15 kg with the Landlord's written consent. Any damage caused by the animal is charged to the Tenant.</div>
+      <div class="ln"></div><div class="ln" style="width:90%"></div><div class="ln"></div><div class="ln" style="width:70%"></div><div class="ln"></div></div></div>
+      <div class="meta" style="opacity:${a}"><h3>Lease - 12 Rue des Lilas.pdf</h3><div class="p">~/Documents/Home · PDF · 8 pages · 196 KB</div>
+      <div class="why">${ICON.look} Matches the text on page 4</div></div>${btns}</div>`;
+    f.innerHTML = foot(3, '<b>31 ms</b>');
+  } else if (k === 'audio') {
+    const g = [
+      { sec: 'AUDIO', items: [
+        { kind: 'audio', name: 'Team call - Oct 3.m4a', badge: '12:04', path: '~/Recordings', sel: true },
+        { kind: 'audio', name: 'Podcast - Ep 14.mp3', badge: '31:20', path: '~/Music/Podcasts' } ] },
+      { sec: 'VIDEO', items: [ { kind: 'video', name: 'Product demo.mov', badge: '2:15', path: '~/Movies' } ] }];
+    const play = clamp((t - te - 1.0) / 3.5);
+    const N = 54, on = Math.floor(N * (0.3 + 0.4 * play));
+    let bars = '';
+    for (let i = 0; i < N; i++) { const h = 14 + 90 * Math.abs(Math.sin(i * 0.9) * Math.cos(i * 0.37) + 0.25 * Math.sin(i * 2.3)); bars += `<i class="${i < on ? 'on' : ''}" style="height:${Math.min(h, 110)}px"></i>`; }
+    const sec = 724 + Math.floor(play * 9), mm = Math.floor(sec / 60), ss = String(sec % 60).padStart(2, '0');
+    body.innerHTML = `<div class="list" style="opacity:${a}">${list(g)}</div><div class="prev">
+      <div class="media" style="opacity:${a}"><div class="wave">${bars}</div><div class="time">${play > 0 ? '▶' : '❚❚'}  ${mm}:${ss} / 41:37</div></div>
+      <div class="meta" style="opacity:${a}"><h3>Team call - Oct 3.m4a</h3><div class="p">~/Recordings · Audio · 41:37 · 38 MB</div>
+      <div class="why">${ICON.look} Matches what's said at 12:04</div></div>${btns}</div>`;
+    f.innerHTML = foot(3, '<b>29 ms</b>');
+  }
+}
+
+const T1 = "truffle 'grep:TODO in:~/code/app'";
+const T2 = "truffle meaning search 'invoice from march'";
+function renderTerm(t) {
+  const P = '<span class="pr">you@linux</span>:<span class="pa">~</span>$ ';
+  const a1 = LINUX + 0.9, e1 = typeEnd(T1, a1, 0.032);
+  let out = P + typed(T1, t, a1, 0.032);
+  if (t < e1 + 0.15) return $('tout').innerHTML = out + '<span class="tc"></span>';
+  const L1 = [
+    '<span class="dim">~/code/app/src/</span><span class="nmc">sync.rs</span><span class="dim">:42:</span>      // <span class="hit">TODO</span>: retry with backoff',
+    '<span class="dim">~/code/app/src/</span><span class="nmc">api/client.ts</span><span class="dim">:118:</span> // <span class="hit">TODO</span>: cache the token',
+    '<span class="dim">~/code/app/</span><span class="nmc">README.md</span><span class="dim">:9:</span>       - [ ] <span class="hit">TODO</span>: Linux screenshots',
+  ];
+  L1.forEach((l, i) => { if (t > e1 + 0.15 + i * 0.07) out += '\n' + l; });
+  const a2 = e1 + 1.0, e2 = typeEnd(T2, a2, 0.03);
+  if (t < a2) return $('tout').innerHTML = out + '\n' + P + '<span class="tc"></span>';
+  out += '\n\n' + P + typed(T2, t, a2, 0.03);
+  if (t < e2 + 0.3) return $('tout').innerHTML = out + '<span class="tc"></span>';
+  const L2 = [
+    ' 1. pdf        <span class="nmc">Invoice-2025-03-14.pdf</span>  <span class="dim">[part 1]</span>',
+    '      <span class="dim">~/Documents/Bills</span>',
+    '      “Invoice <span class="hit">#2025-031</span> · <span class="hit">14 March 2025</span> · Total due 1,240.00 €”',
+    ' 2. doc        <span class="nmc">expenses-q1.ods</span>  <span class="dim">[part 2]</span>',
+    '      <span class="dim">~/Documents/Accounting</span>',
+    '      “<span class="hit">March</span> · hosting 49 € · design <span class="hit">invoice</span> 1,240 €”',
+  ];
+  L2.forEach((l, i) => { if (t > e2 + 0.3 + i * 0.06) out += '\n' + l; });
+  $('tout').innerHTML = out + '\n\n' + P + '<span class="tc"></span>';
+}
+
+function keys(html) { $('kk').innerHTML = html; }
+
+window.render = function (t) {
+  // walls
+  const toLinux = ease(prog(t, LINUX, LINUX + 0.6));
+  $('wall-linux').style.opacity = toLinux;
+  $('wall-mac').style.opacity = 1 - toLinux;
+
+  // launcher
+  const open = ease(prog(t, 0.95, 1.3)), close = ease(prog(t, LINUX - 0.3, LINUX));
+  const w = $('win');
+  w.style.opacity = open * (1 - close);
+  w.style.transform = `scale(${0.96 + 0.04 * open - 0.04 * close})`;
+  w.style.display = open * (1 - close) > 0 ? 'flex' : 'none';
+  renderWin(t);
+
+  // terminal
+  const term = ease(prog(t, LINUX + 0.4, LINUX + 0.8));
+  $('term').style.opacity = term * (1 - ease(prog(t, END - 0.4, END)));
+  $('term').style.transform = `translateY(${(1 - term) * 20}px)`;
+  if (t >= LINUX + 0.4) renderTerm(t);
+  if (t >= LINUX) {
+    $('capt').innerHTML = '<em>Linux</em> · the same, in your terminal';
+    $('capt').parentNode.style.opacity = ease(prog(t, LINUX + 0.3, LINUX + 0.6));
+  }
+
+  // keys overlay
+  const kOn = ease(prog(t, 0.25, 0.5)) * (1 - ease(prog(t, 1.6, 1.9)));
+  const kL = ease(prog(t, LINUX + 0.1, LINUX + 0.3)) * (1 - ease(prog(t, LINUX + 1.0, LINUX + 1.3)));
+  if (t < LINUX) {
+    const dn = t > 0.65 && t < 1.0;
+    keys(`<kbd class="${dn ? 'dn' : ''}">⌥</kbd><kbd class="${dn ? 'dn' : ''}" style="width:110px">Space</kbd><span class="lbl">macOS</span>`);
+    $('keys').style.opacity = kOn;
+  } else {
+    keys(`<kbd>Ctrl</kbd><kbd>Alt</kbd><kbd>T</kbd><span class="lbl">Linux</span>`);
+    $('keys').style.opacity = kL;
+  }
+
+  // end card
+  const e = ease(prog(t, END - 0.1, END + 0.35));
+  $('end').style.opacity = e;
+  $('end').querySelector('img').style.transform = `translateY(${(1 - ease(prog(t, END + 0.1, END + 0.7))) * 30}px) scale(${0.9 + 0.1 * ease(prog(t, END + 0.1, END + 0.7))})`;
+};
+window.TOTAL = TOTAL;
+render(new URLSearchParams(location.search).has('t') ? +new URLSearchParams(location.search).get('t') : 6.5);
+</script>
+</body>
+</html>

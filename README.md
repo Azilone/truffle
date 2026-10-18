@@ -22,6 +22,8 @@ One Rust binary for macOS and Linux. Free and open source.
   </tr>
 </table>
 
+<img src="assets/demo.gif" alt="Truffle finding files by name, by meaning in photos, PDFs and audio, in any language, on macOS and Linux" width="100%">
+
 </div>
 
 ## Install
@@ -112,7 +114,7 @@ Indexing runs in a child process that exits when done, so the encoders' memory g
 
 Built on [fsearch](https://github.com/noahdunnagan/fsearch), [DigUp](https://github.com/ARahim3/DigUp),
 [trovara](https://github.com/Subhankar-Patra1/trovara) and [llama.cpp](https://github.com/ggml-org/llama.cpp).
-See [NOTICE](NOTICE).
+See [NOTICE](NOTICE). Demo photos: [credits](assets/demo/README.md).
 
 <div align="center">
 
